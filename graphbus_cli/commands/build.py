@@ -8,7 +8,7 @@ from pathlib import Path
 from rich.table import Table
 
 from graphbus_core.build.builder import build_project
-from graphbus_core.config import BuildConfig
+from graphbus_core.config import BuildConfig, LLMConfig, SafetyConfig
 from graphbus_cli.utils.output import (
     console, print_success, print_error, print_info,
     print_header, create_progress_bar, format_duration
@@ -34,7 +34,66 @@ from graphbus_cli.utils.errors import BuildError
     is_flag=True,
     help='Verbose output'
 )
-def build(agents_dir: str, output_dir: str, validate: bool, verbose: bool):
+@click.option(
+    '--enable-agents',
+    is_flag=True,
+    help='Enable LLM agent orchestration during build (agents analyze and propose improvements)'
+)
+@click.option(
+    '--llm-model',
+    type=str,
+    default='claude-sonnet-4-20250514',
+    help='LLM model for agent orchestration (claude-sonnet-4, gpt-4, etc.)'
+)
+@click.option(
+    '--llm-api-key',
+    type=str,
+    envvar='ANTHROPIC_API_KEY',
+    help='LLM API key (or set ANTHROPIC_API_KEY env var)'
+)
+@click.option(
+    '--max-negotiation-rounds',
+    type=int,
+    default=10,
+    help='Maximum negotiation rounds before termination (default: 10)'
+)
+@click.option(
+    '--max-proposals-per-agent',
+    type=int,
+    default=5,
+    help='Maximum proposals per agent (default: 5)'
+)
+@click.option(
+    '--convergence-threshold',
+    type=int,
+    default=2,
+    help='Rounds without proposals before convergence (default: 2)'
+)
+@click.option(
+    '--protected-files',
+    type=str,
+    multiple=True,
+    help='Files that agents cannot modify (can specify multiple)'
+)
+@click.option(
+    '--arbiter-agent',
+    type=str,
+    help='Agent name to use as arbiter for conflict resolution'
+)
+def build(
+    agents_dir: str,
+    output_dir: str,
+    validate: bool,
+    verbose: bool,
+    enable_agents: bool,
+    llm_model: str,
+    llm_api_key: str,
+    max_negotiation_rounds: int,
+    max_proposals_per_agent: int,
+    convergence_threshold: int,
+    protected_files: tuple,
+    arbiter_agent: str
+):
     """
     Build agent graphs from source directory.
 
@@ -48,6 +107,8 @@ def build(agents_dir: str, output_dir: str, validate: bool, verbose: bool):
       graphbus build agents/ -o build/          # Custom output directory
       graphbus build agents/ --validate         # Validate after build
       graphbus build agents/ -v                 # Verbose output
+      graphbus build agents/ --enable-agents    # Build with LLM agent orchestration
+      graphbus build agents/ --enable-agents --llm-model claude-sonnet-4 --max-negotiation-rounds 5
 
     \b
     Output:
@@ -56,6 +117,16 @@ def build(agents_dir: str, output_dir: str, validate: bool, verbose: bool):
         - agents.json        Agent definitions and source code
         - topics.json        Topic registry and subscriptions
         - build_summary.json Build metadata
+        - negotiations.json  Negotiation history (when --enable-agents is used)
+
+    \b
+    Agent Orchestration:
+      When --enable-agents is enabled, agents become active LLM agents that can:
+        - Analyze their own code for improvements
+        - Propose code changes with rationale
+        - Evaluate other agents' proposals
+        - Negotiate through multiple rounds until convergence
+      This enables autonomous agent collaboration for codebase improvement.
     """
     try:
         agents_path = Path(agents_dir).resolve()
@@ -75,12 +146,43 @@ def build(agents_dir: str, output_dir: str, validate: bool, verbose: bool):
         print_info(f"Source directory: {agents_path}")
         print_info(f"Root package: {module_name}")
         print_info(f"Output directory: {output_path}")
+        if enable_agents:
+            print_info(f"Agent orchestration: ENABLED")
+            print_info(f"LLM model: {llm_model}")
+            print_info(f"Max negotiation rounds: {max_negotiation_rounds}")
         console.print()
+
+        # Create LLM config if agent orchestration is enabled
+        llm_config = None
+        if enable_agents:
+            if not llm_api_key:
+                raise BuildError(
+                    "LLM API key required when --enable-agents is set. "
+                    "Provide via --llm-api-key or ANTHROPIC_API_KEY environment variable."
+                )
+            llm_config = LLMConfig(
+                model=llm_model,
+                api_key=llm_api_key
+            )
+
+        # Create safety config if agent orchestration is enabled
+        safety_config = SafetyConfig()
+        if enable_agents:
+            arbiter_list = [arbiter_agent] if arbiter_agent else []
+            safety_config = SafetyConfig(
+                max_negotiation_rounds=max_negotiation_rounds,
+                max_proposals_per_agent=max_proposals_per_agent,
+                convergence_threshold=convergence_threshold,
+                protected_files=list(protected_files),
+                arbiter_agents=arbiter_list
+            )
 
         # Create build config
         config = BuildConfig(
             root_package=module_name,
-            output_dir=str(output_path)
+            output_dir=str(output_path),
+            llm_config=llm_config,
+            safety_config=safety_config
         )
 
         # Run build project (this handles all the steps)
@@ -92,13 +194,13 @@ def build(agents_dir: str, output_dir: str, validate: bool, verbose: bool):
             # Capture output
             f = io.StringIO()
             with contextlib.redirect_stdout(f):
-                artifacts = build_project(config, enable_agents=False)
+                artifacts = build_project(config, enable_agents=enable_agents)
 
             # Show progress indication
             console.print("[cyan]✓[/cyan] Build completed")
         else:
             # Show full build output
-            artifacts = build_project(config, enable_agents=False)
+            artifacts = build_project(config, enable_agents=enable_agents)
 
         console.print()
 

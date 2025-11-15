@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "name": "HelloAgent",
+      "data": {
+        "module": "agents.hello_agent",
+        "class_name": "HelloAgent",
+        "source_file": "/Users/ubuntu/workbench/graphbus/examples/hello_world_mcp/agents/hello_agent.py",
+        "system_prompt": "",
+        "methods": [
+          "get_stats",
+          "say_hello"
+        ],
+        "subscriptions": [],
+        "metadata": {}
+      }
+    }
+  ],
+  "edges": []
+}

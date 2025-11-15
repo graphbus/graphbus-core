@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "graphbus": {
+      "command": "python3",
+      "args": [
+        "/Users/ubuntu/workbench/graphbus/graphbus-mcp-server/server.py"
+      ],
+      "cwd": "/Users/ubuntu/workbench/graphbus",
+      "env": {
+        "PYTHONPATH": "/Users/ubuntu/workbench/graphbus"
+      }
+    }
+  }
+}

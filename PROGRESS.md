@@ -700,6 +700,135 @@ graphbus coherence visualize [--output <file>]  # networkx graph with matplotlib
 
 ---
 
+## ✅ Tranche 4.5: LLM Agent Orchestration Integration (COMPLETED)
+
+**Status**: Completed - All features exposed and tested
+**Priority**: High - Critical missing feature exposure
+**Duration**: 1 week (Nov 2025)
+
+### Overview
+
+The LLM agent orchestration and negotiation system was **fully implemented** in `graphbus_core` but **hidden from users**. This tranche successfully exposed these features through CLI commands and MCP tools, enabling autonomous agent collaboration for code review and improvement.
+
+### What Was Exposed
+
+#### Phase 1: CLI Commands (Completed ✅)
+- ✅ `graphbus build --enable-agents` - Enable LLM agent orchestration during build
+- ✅ 8 new CLI flags: llm-model, llm-api-key, max-negotiation-rounds, max-proposals-per-agent, convergence-threshold, protected-files, arbiter-agent
+- ✅ `graphbus negotiate` - Standalone post-build negotiation command
+- ✅ `graphbus inspect-negotiation` - View negotiation history with 3 output formats (table, timeline, json)
+- ✅ Environment variable support: ANTHROPIC_API_KEY, OPENAI_API_KEY
+- ✅ **41/41 functional tests passing** (test_agent_orchestration_commands.py)
+
+#### Phase 2: MCP Tools (Completed ✅)
+- ✅ Updated `graphbus_build` MCP tool with 8 agent orchestration parameters
+- ✅ Created `graphbus_negotiate` MCP tool for post-build negotiation
+- ✅ Created `graphbus_inspect_negotiation` MCP tool with filtering (round, agent, format)
+- ✅ Comprehensive README documentation with examples and workflow patterns
+- ✅ **42/42 MCP integration tests passing** (test_mcp_agent_orchestration_tools.py)
+
+#### Phase 3: Documentation (Completed ✅)
+- ✅ graphbus-mcp-server/README.md - Complete LLM Agent Orchestration section
+- ✅ TRANCHE_4.5.md - Detailed implementation plan with phase breakdown
+- ✅ MCP tools JSON - All tool definitions with when_to_use guidance
+- ✅ 2 workflow options documented: during build vs. after build
+- ✅ Safety guardrails explained (6 mechanisms)
+- ✅ Examples with code blocks
+
+### How LLM Agent Orchestration Works
+
+Each `@agent` decorated class becomes an active LLM agent during build:
+1. **Agent Activation**: Each agent gets its own LLM context
+2. **Analysis Phase**: Agents analyze their own code for improvements
+3. **Proposal Phase**: Agents propose code changes with detailed rationale
+4. **Evaluation Phase**: Agents evaluate other agents' proposals (approve/reject with reasoning)
+5. **Consensus**: Multi-round negotiation until convergence (no new proposals for N rounds)
+6. **Commitment**: Accepted proposals are applied to source files
+7. **History**: Complete negotiation saved to `.graphbus/negotiations.json`
+
+### Architectural Decisions
+
+**1. Two-Workflow Approach**:
+- Option A: Enable during build (`graphbus build --enable-agents`)
+- Option B: Separate after build (`graphbus build` → `graphbus negotiate`)
+- Rationale: Flexibility for CI/CD (fast builds + optional AI enhancement)
+
+**2. Safety-First Design**:
+- Protected files prevent modification of critical files
+- Max proposals per agent prevents spam
+- Max rounds prevents infinite loops
+- Convergence threshold enables automatic termination
+- Arbiter agent for conflict resolution
+- Complete audit trail in negotiations.json
+
+**3. Three Output Formats**:
+- Table: Quick overview for users
+- Timeline: Understanding negotiation dynamics
+- JSON: Programmatic analysis and external tools
+
+**4. Environment Variable Support**:
+- ANTHROPIC_API_KEY for Claude models
+- OPENAI_API_KEY for GPT models
+- Rationale: Security best practice (no API keys in commands)
+
+### Test Coverage
+
+**Total: 83 tests passing (100%)**
+- Phase 1 CLI Tests: 41/41 passing
+  - Build command with agent orchestration flags
+  - Negotiate command (API key validation, artifact validation)
+  - Inspect-negotiation command (format validation, filtering)
+- Phase 2 MCP Tests: 42/42 passing
+  - graphbus_build tool parameters (8 new parameters)
+  - graphbus_negotiate tool definition (10 parameters)
+  - graphbus_inspect_negotiation tool definition (4 parameters)
+  - Cross-tool parameter consistency validation
+
+### Files Modified (10 files)
+
+**CLI Commands** (2 files):
+1. `graphbus_cli/commands/build.py` - Added 8 agent orchestration flags
+2. `graphbus_cli/commands/negotiate.py` - New standalone negotiation command
+3. `graphbus_cli/commands/inspect_negotiation.py` - New history inspection command
+4. `graphbus_cli/main.py` - Registered new commands
+
+**MCP Tools** (2 files):
+5. `graphbus-mcp-server/mcp_tools.json` - Updated graphbus_build, added negotiate and inspect_negotiation tools
+6. `graphbus-mcp-server/README.md` - Comprehensive LLM Agent Orchestration documentation
+
+**Tests** (2 files):
+7. `tests/cli/functional/test_agent_orchestration_commands.py` - 41 CLI tests
+8. `tests/mcp/integration/test_mcp_agent_orchestration_tools.py` - 42 MCP tests
+
+**Documentation** (2 files):
+9. `TRANCHE_4.5.md` - Implementation plan with phase breakdown
+10. `PROGRESS.md` - This file (completion summary)
+
+### Success Metrics (All Achieved ✅)
+
+- ✅ CLI exposes all agent orchestration parameters
+- ✅ MCP tools expose all agent orchestration parameters
+- ✅ Negotiation history is saved to .graphbus/negotiations.json
+- ✅ Documentation is complete with examples and workflows
+- ✅ All tests pass (83/83 = 100%)
+- ✅ Multiple output formats supported (table, timeline, json)
+- ✅ Filtering capabilities work (round, agent)
+- ✅ Environment variable support implemented
+- ✅ Safety guardrails documented and exposed
+
+### Next Steps (Future Work)
+
+**Not included in Tranche 4.5** (deferred to later):
+- Working example projects demonstrating multi-round negotiation
+- E2E integration tests with actual LLM calls
+- GRAPHBUS_ENABLE_AGENTS global environment variable
+- Performance benchmarks for negotiation
+- Advanced arbiter strategies
+
+**See [TRANCHE_4.5.md](TRANCHE_4.5.md) for complete details.**
+
+---
+
 ## Tranche 5: Developer Experience & Platform Adoption (PLANNING)
 
 **Focus**: Making GraphBus easy to adopt, understand, and use from a developer perspective. MVP is MCP (Model Context Protocol) integration with Claude Code.

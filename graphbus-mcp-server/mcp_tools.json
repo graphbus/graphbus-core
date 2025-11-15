@@ -1,0 +1,1545 @@
+{
+  "schema_version": "1.0",
+  "mcp_server": "graphbus-mcp",
+  "architecture_context": "See README.md for complete GraphBus architecture including build/run modes, NetworkX DAG system, and event-driven messaging",
+  "tools": [
+    {
+      "name": "graphbus_build",
+      "description": "Build GraphBus agents from Python source code into executable runtime artifacts. This is BUILD MODE - the first phase of GraphBus's two-phase architecture. Scans agent files for @agent decorators, extracts methods with @subscribes/@publishes metadata, constructs a NetworkX dependency graph to validate no circular dependencies, performs topological sort to determine agent initialization order, and generates artifacts in .graphbus/ including agents.json, graph.json, topics.json, and modules/. OPTIONAL: Enable LLM agent orchestration (--enable-agents) to have agents analyze their own code, propose improvements, and negotiate changes through multi-round collaboration before finalizing the build. The build process validates agent structure, resolves dependencies, and prepares everything needed for runtime execution. This is analogous to compiling code - it transforms source into an optimized executable form.",
+      "detailed_usage": "Use this command after writing or modifying any agent Python files. The build process is required before running agents because GraphBus operates in two distinct phases: Build Mode (compile-time) and Runtime Mode (execution-time). During build, GraphBus uses NetworkX to create a directed acyclic graph (DAG) of agent dependencies, which is critical for determining the correct initialization order and detecting circular dependencies that would cause startup failures. If the build detects cycles in the dependency graph using nx.is_directed_acyclic_graph(), it will fail with clear error messages. OPTIONAL AGENT ORCHESTRATION: Set enable_agents=true with llm_api_key to activate LLM-powered agent orchestration where each @agent class becomes an active participant in code review and improvement. Agents analyze their own code, propose refactorings/enhancements, evaluate other agents' proposals, and negotiate through multiple rounds until consensus is reached. All proposals and evaluations are saved to .graphbus/negotiations.json for later inspection with graphbus_inspect_negotiation. After a successful build, you can use graphbus_inspect to examine the generated artifacts and dependency graph, or proceed directly to graphbus_run to execute the system. Always rebuild after code changes - artifacts are snapshots of your code at build time.",
+      "phase": "BUILD",
+      "networkx_usage": "Creates dependency DAG, performs cycle detection with nx.is_directed_acyclic_graph(), executes topological sort with nx.topological_sort() for activation order",
+      "artifacts_generated": [
+        ".graphbus/agents.json - Agent definitions with metadata",
+        ".graphbus/graph.json - NetworkX serialized dependency graph",
+        ".graphbus/topics.json - Topic registry with publishers/subscribers",
+        ".graphbus/subscriptions.json - Topic subscription mappings",
+        ".graphbus/build_summary.json - Build metadata and statistics",
+        ".graphbus/modules/ - Prepared agent code modules",
+        ".graphbus/negotiations.json - Agent orchestration history (only if enable_agents=true)"
+      ],
+      "when_to_use": [
+        "After creating new agents with graphbus_init or graphbus_generate",
+        "After modifying any agent source code (add/remove methods, change subscriptions)",
+        "User says 'build', 'compile', 'prepare', 'make my agents ready'",
+        "Before running agents for the first time",
+        "When graphbus_validate finds issues and user has fixed them",
+        "After adding new dependencies between agents"
+      ],
+      "when_not_to_use": [
+        "Artifacts exist and source code hasn't changed (no need to rebuild)",
+        "Just inspecting existing structure (use graphbus_inspect)",
+        "Runtime is already running (stop it first, then rebuild)",
+        "Want to validate without building (use graphbus_validate)"
+      ],
+      "typical_workflow_position": "Step 2 (after init/generate, before run)",
+      "follows_commands": ["graphbus_init", "graphbus_generate", "graphbus_validate"],
+      "precedes_commands": ["graphbus_inspect", "graphbus_run"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agents_dir": {
+            "type": "string",
+            "description": "Directory containing agent .py files with @agent decorators (e.g., 'agents/', 'my-project/agents')"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Output directory for .graphbus artifacts (default: .graphbus in current directory)",
+            "default": ".graphbus"
+          },
+          "validate": {
+            "type": "boolean",
+            "description": "Run validation checks after build (same as graphbus_validate but post-build)",
+            "default": false
+          },
+          "verbose": {
+            "type": "boolean",
+            "description": "Show detailed build output including dependency resolution and NetworkX graph construction",
+            "default": false
+          },
+          "enable_agents": {
+            "type": "boolean",
+            "description": "Enable LLM agent orchestration during build - agents analyze code, propose improvements, and negotiate changes collaboratively. When enabled, each @agent class becomes an active LLM agent participating in multi-round code review and improvement. Requires llm_api_key.",
+            "default": false
+          },
+          "llm_model": {
+            "type": "string",
+            "description": "LLM model to use for agent orchestration (e.g., 'claude-sonnet-4-20250514', 'gpt-4', 'claude-3-5-sonnet-20241022'). Only used when enable_agents is true.",
+            "default": "claude-sonnet-4-20250514"
+          },
+          "llm_api_key": {
+            "type": "string",
+            "description": "API key for LLM provider (Anthropic, OpenAI). Required when enable_agents is true. Can also be set via ANTHROPIC_API_KEY environment variable for Anthropic models or OPENAI_API_KEY for OpenAI models."
+          },
+          "max_negotiation_rounds": {
+            "type": "integer",
+            "description": "Maximum rounds of multi-agent negotiation before forcing termination. Each round consists of: agents propose changes → agents evaluate proposals → accepted proposals are committed. Default: 10 rounds",
+            "default": 10
+          },
+          "max_proposals_per_agent": {
+            "type": "integer",
+            "description": "Maximum number of proposals each agent can make per negotiation round. Prevents individual agents from overwhelming the system. Default: 5 proposals",
+            "default": 5
+          },
+          "convergence_threshold": {
+            "type": "integer",
+            "description": "Number of consecutive rounds with no accepted proposals before declaring convergence and ending negotiation. Default: 2 rounds",
+            "default": 2
+          },
+          "protected_files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of file patterns that agents cannot modify (e.g., ['*.json', 'tests/*', 'config.py']). Safety guardrail to prevent agents from modifying critical files."
+          },
+          "arbiter_agent": {
+            "type": "string",
+            "description": "Name of agent to act as arbiter for conflict resolution. When multiple agents disagree on a proposal, the arbiter makes the final decision. If not specified, conflicts are resolved by majority vote."
+          }
+        },
+        "required": ["agents_dir"]
+      }
+    },
+    {
+      "name": "graphbus_negotiate",
+      "description": "Run standalone LLM agent negotiation on existing build artifacts - allows post-build agent orchestration without rebuilding. This is BUILD MODE tool for projects that want to separate the build phase from the agent orchestration phase. Loads agents from .graphbus/ artifacts, activates each @agent class as an LLM-powered participant, runs multi-round negotiation where agents analyze code, propose improvements, evaluate proposals, and negotiate changes until consensus. All negotiation history is saved to .graphbus/negotiations.json for inspection with graphbus_inspect_negotiation. Useful when you want to build first to verify basic correctness, then run agent orchestration as a separate step, or when you want to re-run negotiation with different parameters without rebuilding from scratch.",
+      "detailed_usage": "Use this command after graphbus_build has created artifacts but you want to run agent orchestration as a separate step rather than during build. This is particularly useful in CI/CD pipelines where you want fast builds for basic validation, then optional agent orchestration for deeper analysis. The negotiate command requires a valid .graphbus/ directory with agents.json, loads agent definitions, creates LLM instances for each agent, and runs the negotiation protocol: Round 1: agents analyze code and propose changes → agents evaluate each other's proposals → consensus check. Round 2+: repeat until convergence (no new proposals for N rounds) or max rounds reached. Requires llm_api_key (Anthropic or OpenAI) - can be passed as parameter or via ANTHROPIC_API_KEY/OPENAI_API_KEY environment variable. Safety guardrails include protected_files (prevents modification), max_proposals_per_agent (prevents spam), and convergence_threshold (automatic termination). All proposals, evaluations, conflicts, and commits are saved to .graphbus/negotiations.json with timestamps and full context for later analysis. Use graphbus_inspect_negotiation afterward to view the negotiation history.",
+      "phase": "BUILD",
+      "when_to_use": [
+        "After graphbus_build when you want separate agent orchestration step",
+        "User says 'run negotiation', 'let agents improve the code', 'run agent orchestration'",
+        "CI/CD pipelines: fast build for validation, optional negotiate for improvement",
+        "Want to re-run negotiation with different parameters without rebuilding",
+        "Debugging agent proposals: run negotiate, inspect results, tweak params, re-run",
+        "When build is successful but you want AI-powered code review afterward"
+      ],
+      "when_not_to_use": [
+        "Artifacts don't exist (run graphbus_build first)",
+        "Want agent orchestration during build (use graphbus_build --enable-agents)",
+        "No API key available (negotiate requires LLM access)",
+        "Agents already contain optimal code (no need for AI review)",
+        "Prototype phase (agent orchestration is for mature code)"
+      ],
+      "typical_workflow_position": "Step 2.5 (between build and inspect, optional AI enhancement step)",
+      "follows_commands": ["graphbus_build"],
+      "precedes_commands": ["graphbus_inspect_negotiation", "graphbus_inspect", "graphbus_run"],
+      "typical_sequence": "graphbus_build → graphbus_negotiate → graphbus_inspect_negotiation → graphbus_build (apply changes) → graphbus_run",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts from graphbus_build (must have agents.json, graph.json, etc.)"
+          },
+          "rounds": {
+            "type": "integer",
+            "description": "Maximum negotiation rounds before termination (each round = propose → evaluate → commit cycle)",
+            "default": 5
+          },
+          "llm_model": {
+            "type": "string",
+            "description": "LLM model for agent orchestration (e.g., 'claude-sonnet-4-20250514', 'gpt-4', 'claude-3-5-sonnet-20241022')",
+            "default": "claude-sonnet-4-20250514"
+          },
+          "llm_api_key": {
+            "type": "string",
+            "description": "API key for LLM provider (Anthropic/OpenAI). Required. Can use ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable."
+          },
+          "max_proposals_per_agent": {
+            "type": "integer",
+            "description": "Maximum proposals each agent can make per round (prevents overwhelming the system)",
+            "default": 3
+          },
+          "convergence_threshold": {
+            "type": "integer",
+            "description": "Consecutive rounds with no accepted proposals before declaring convergence and stopping",
+            "default": 2
+          },
+          "protected_files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "File patterns agents cannot modify (e.g., ['*.json', 'tests/*', 'config.py']) for safety"
+          },
+          "arbiter_agent": {
+            "type": "string",
+            "description": "Agent name to act as arbiter for conflict resolution (if not specified, majority vote is used)"
+          },
+          "temperature": {
+            "type": "number",
+            "description": "LLM temperature for creativity vs consistency (0.0-1.0, default: 0.7)",
+            "default": 0.7
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_run",
+      "description": "Start the GraphBus runtime and execute the agent system. This is RUNTIME MODE - the second phase of GraphBus's two-phase architecture. Loads pre-built artifacts from .graphbus/, deserializes the NetworkX dependency graph, initializes agents in topological order (determined by nx.topological_sort during build), starts the message bus for event-driven communication, and begins processing events. Creates a persistent runtime session that stays alive across multiple interactions, returning a session_id that you must use with graphbus_call, graphbus_publish, and graphbus_stats to interact with the running system. The runtime respects the dependency graph - agents are started in the order determined by the DAG to ensure all dependencies are available before dependent agents initialize.",
+      "detailed_usage": "Use this command after successfully building agents with graphbus_build. Runtime mode is where your agents actually execute - build mode was just preparation. When you run this command, GraphBus loads the dependency graph from .graphbus/graph.json (NetworkX serialized format), then uses topological sort to determine the correct initialization order, ensuring that if AgentA depends on AgentB, then AgentB starts first. The message bus begins routing events according to the topic subscriptions defined in .graphbus/topics.json. The runtime session persists until you explicitly stop it or your conversation ends - this allows you to make multiple calls and publish multiple events without restarting. You can enable advanced features like state_persistence (agent state survives restarts), hot_reload (reload code without full restart), health_monitoring (auto-restart failed agents), and debug mode (interactive breakpoints). Store the returned session_id and use it with all subsequent graphbus_call, graphbus_publish, and graphbus_stats commands.",
+      "phase": "RUNTIME",
+      "networkx_usage": "Loads dependency graph, uses nx.topological_sort() to determine agent initialization order, respects DAG for startup sequence",
+      "creates_persistent_session": true,
+      "session_lifecycle": "Runtime stays active until explicitly stopped or session ends. All interaction commands (call, publish, stats) require the session_id returned by this command.",
+      "initialization_order": "Agents initialized in topological order from dependency DAG - if A depends on B, B starts first",
+      "when_to_use": [
+        "After successful graphbus_build (artifacts exist)",
+        "User wants to execute/test their agent system",
+        "User says 'run', 'start', 'execute', 'launch my agents'",
+        "Want to interact with agents (call methods, publish events)",
+        "Want to see real-time agent behavior and event flow",
+        "Testing event-driven workflows"
+      ],
+      "when_not_to_use": [
+        "Artifacts don't exist (run graphbus_build first)",
+        "Just want to see structure (use graphbus_inspect)",
+        "Runtime session already active for this artifacts_dir (avoid duplicate sessions)",
+        "Want to build or modify code (stop runtime, rebuild, then run)"
+      ],
+      "typical_workflow_position": "Step 3 (after build, before call/publish)",
+      "follows_commands": ["graphbus_build", "graphbus_inspect"],
+      "precedes_commands": ["graphbus_call", "graphbus_publish", "graphbus_stats"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts from graphbus_build"
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "Start REPL mode for manual terminal interaction (set false for programmatic MCP use)",
+            "default": false
+          },
+          "no_message_bus": {
+            "type": "boolean",
+            "description": "Disable message bus (agents can't communicate via events - only for testing isolated agents)",
+            "default": false
+          },
+          "enable_state_persistence": {
+            "type": "boolean",
+            "description": "Enable state persistence to disk - agent state survives restarts (Tranche 4 feature)",
+            "default": false
+          },
+          "enable_hot_reload": {
+            "type": "boolean",
+            "description": "Enable hot code reload - update agents without full restart (Tranche 4 feature)",
+            "default": false
+          },
+          "enable_health_monitoring": {
+            "type": "boolean",
+            "description": "Enable health monitoring - track agent health, auto-restart on failures (Tranche 4 feature)",
+            "default": false
+          },
+          "debug": {
+            "type": "boolean",
+            "description": "Enable interactive debugger with breakpoints (Tranche 4 feature)",
+            "default": false
+          },
+          "verbose": {
+            "type": "boolean",
+            "description": "Show detailed runtime logs including event routing and agent lifecycle",
+            "default": false
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_inspect",
+      "description": "Examine GraphBus build artifacts WITHOUT starting the runtime - pure read-only inspection of the built system. Shows the agent dependency graph (NetworkX DAG), topic subscriptions, agent methods, and system topology. This command operates in BUILD MODE (inspecting artifacts) not RUNTIME MODE (executing agents). You can visualize the dependency graph structure, understand event flow paths, see which agents subscribe to which topics, examine individual agent capabilities, and verify the build results before running. The graph display shows topological ordering - the sequence in which agents will initialize when you run the system. This is essential for understanding your system architecture and debugging configuration issues like missing subscriptions or circular dependencies.",
+      "detailed_usage": "Use this command after graphbus_build to understand what was built before you execute it. This is particularly valuable for debugging 'why isn't my agent receiving events' problems - you can verify topic subscriptions match between publishers and subscribers. The --show_graph option displays the NetworkX dependency DAG in a readable format, showing you exactly how agents depend on each other and the order they'll initialize (topological sort order). The --show_topics option reveals the event flow graph - which agents publish to which topics and which agents subscribe. Use --show_subscriptions for a detailed mapping of topic -> subscriber handlers. For deep-dive analysis, use --agent parameter to examine a specific agent's methods, dependencies, subscriptions, and metadata. The --format option lets you export as JSON (for programmatic use), YAML (for human reading), or table (for Claude to present). This command never starts agents or the message bus - it's purely analytical.",
+      "phase": "BUILD",
+      "networkx_usage": "Displays dependency DAG from graph.json, shows topological ordering, can trace paths between agents using NetworkX graph traversal",
+      "when_to_use": [
+        "After graphbus_build to verify build results",
+        "Before graphbus_run to understand system structure",
+        "Debugging: 'why isn't my agent receiving events'",
+        "Understanding: 'how are my agents connected'",
+        "User asks: 'show me the agent graph', 'what topics exist', 'list agents'",
+        "Verifying dependency order before running",
+        "Checking if circular dependencies were resolved",
+        "Exploring the system architecture"
+      ],
+      "when_not_to_use": [
+        "Artifacts don't exist (run graphbus_build first)",
+        "Want runtime statistics (use graphbus_stats with active session)",
+        "Want to modify configuration (edit source and rebuild)",
+        "Want to execute agents (use graphbus_run)"
+      ],
+      "typical_workflow_position": "Step 2.5 (between build and run, or anytime after build for analysis)",
+      "follows_commands": ["graphbus_build"],
+      "parallel_commands": ["graphbus_validate", "graphbus_run"],
+      "shows": [
+        "NetworkX dependency DAG with topological ordering",
+        "Event flow graph (topic subscriptions)",
+        "Agent methods and their schemas",
+        "Topic publishers and subscribers",
+        "Agent metadata and capabilities"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts to inspect"
+          },
+          "show_graph": {
+            "type": "boolean",
+            "description": "Display NetworkX dependency DAG with activation order (topological sort)",
+            "default": false
+          },
+          "show_agents": {
+            "type": "boolean",
+            "description": "List all agents with their methods, subscriptions, and dependencies",
+            "default": false
+          },
+          "show_topics": {
+            "type": "boolean",
+            "description": "List all message topics with publishers and subscribers (event flow graph)",
+            "default": false
+          },
+          "show_subscriptions": {
+            "type": "boolean",
+            "description": "Show detailed topic -> agent subscription mappings",
+            "default": false
+          },
+          "agent": {
+            "type": "string",
+            "description": "Deep dive into specific agent - shows methods, dependencies, subscriptions, state, metadata"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["json", "yaml", "table"],
+            "description": "Output format: table (readable for Claude), json (programmatic), yaml (config-style)",
+            "default": "table"
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_inspect_negotiation",
+      "description": "Inspect agent negotiation history from LLM agent orchestration - view all proposals, evaluations, conflicts, and commits from multi-round agent collaboration. This is BUILD MODE read-only tool for analyzing negotiation.json artifacts created by graphbus_build --enable-agents or graphbus_negotiate. Shows which agents proposed what changes, how other agents evaluated those proposals (approve/reject with rationale), which conflicts occurred and how they were resolved, and which proposals were ultimately committed to code. Supports multiple output formats (table summary, chronological timeline, complete JSON export) and filtering by round number or agent name. Essential for understanding agent decision-making, debugging why certain proposals were rejected, and auditing AI-generated code changes.",
+      "detailed_usage": "Use this command after running graphbus_build --enable-agents or graphbus_negotiate to understand what happened during agent orchestration. The negotiation history file (.graphbus/negotiations.json) contains complete records of all agent interactions including timestamps, proposal contents, evaluation rationales, and commit details. Three output formats serve different needs: (1) 'table' format shows summary statistics and key decisions in readable tables - best for quick overview and showing to users, (2) 'timeline' format displays chronological event flow showing the sequence of proposals → evaluations → commits round by round - best for understanding negotiation dynamics, (3) 'json' format exports complete raw data - best for programmatic analysis or external tools. Filtering options: --round shows only specific negotiation round, --agent filters to proposals/evaluations from one agent. Use this when debugging why agent proposals failed ('why was my optimization rejected'), auditing AI changes ('what did agents actually modify'), understanding negotiation dynamics ('how many rounds did it take to converge'), or validating agent behavior ('are agents making good decisions').",
+      "phase": "BUILD",
+      "when_to_use": [
+        "After graphbus_build --enable-agents or graphbus_negotiate",
+        "User asks: 'show negotiation history', 'what did agents propose', 'why was X rejected'",
+        "Debugging: 'why didn't agents improve my code', 'what changes were suggested'",
+        "Auditing: 'what did AI agents modify', 'review agent decisions'",
+        "Understanding: 'how does agent negotiation work', 'show me the process'",
+        "Validating: 'are agents making good proposals', 'check agent quality'"
+      ],
+      "when_not_to_use": [
+        "Negotiation hasn't run (no negotiations.json file exists)",
+        "Want to inspect agent structure (use graphbus_inspect)",
+        "Want to modify agents (edit source code)",
+        "Want runtime statistics (use graphbus_stats)"
+      ],
+      "typical_workflow_position": "Step 3 (after negotiate/build-with-agents, before deciding next steps)",
+      "follows_commands": ["graphbus_build", "graphbus_negotiate"],
+      "parallel_commands": ["graphbus_inspect"],
+      "shows": [
+        "Summary statistics (rounds, proposals, accepted/rejected counts)",
+        "All proposals with agent name, intent, and status",
+        "All evaluations with evaluator, decision (approve/reject), rationale",
+        "All commits applied with files modified",
+        "Conflicts and their resolution",
+        "Timeline of negotiation events"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ with negotiations.json file from agent orchestration"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["table", "json", "timeline"],
+            "description": "Output format: table (summary tables), timeline (chronological events), json (complete raw data)",
+            "default": "table"
+          },
+          "round": {
+            "type": "integer",
+            "description": "Filter to specific negotiation round number (omit to show all rounds)"
+          },
+          "agent": {
+            "type": "string",
+            "description": "Filter to specific agent's proposals and evaluations (omit to show all agents)"
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_validate",
+      "description": "Validate agent source code for common issues BEFORE building - a linter/static analyzer for GraphBus agents. Checks for missing @agent decorators, validates @subscribes/@publishes syntax, detects circular dependencies using NetworkX cycle detection, verifies type annotations match schema definitions, finds missing method implementations, and identifies potential runtime problems. This is a BUILD MODE command that analyzes source code without creating artifacts. It helps prevent build failures and runtime errors by catching issues early. Runs faster than a full build because it doesn't generate artifacts - just analyzes code structure and dependencies.",
+      "detailed_usage": "Use this command before graphbus_build when you're unsure if your agent code is correct, or when you're getting build errors and need to understand why. The validator performs multiple checks: (1) AST parsing to find @agent decorators and validate syntax, (2) NetworkX graph construction from dependencies to detect cycles with nx.find_cycle(), (3) type annotation checking against schema definitions, (4) method signature validation for subscription handlers. Use --strict mode to treat warnings as errors (recommended for CI/CD). The --check_cycles option builds a NetworkX dependency graph from your code and uses cycle detection algorithms to find circular dependencies - if AgentA depends on AgentB which depends on AgentC which depends on AgentA, this will catch it. The --check_types option validates that your method signatures match the schemas defined in @subscribes decorators. This is particularly useful for large codebases where you want quick validation without the overhead of a full build.",
+      "phase": "BUILD",
+      "networkx_usage": "Constructs dependency graph from source code, uses nx.find_cycle() to detect circular dependencies, validates DAG constraints",
+      "validation_checks": [
+        "Missing @agent decorators on agent classes",
+        "Missing @subscribes/@publishes on methods",
+        "Circular dependencies (NetworkX cycle detection)",
+        "Type annotation mismatches with schemas",
+        "Empty method implementations",
+        "Invalid topic names (format checking)",
+        "Duplicate agent names",
+        "Missing required method parameters"
+      ],
+      "when_to_use": [
+        "Before graphbus_build to catch issues early",
+        "When getting build errors - helps identify specific problems",
+        "User asks: 'check my code', 'validate agents', 'are there any errors'",
+        "After writing new agents but before building",
+        "In CI/CD pipeline before deployment",
+        "When teaching: show user what needs to be fixed",
+        "After major refactoring"
+      ],
+      "when_not_to_use": [
+        "Agents already built successfully (build validates automatically)",
+        "Want to see runtime behavior (use graphbus_run)",
+        "Want detailed structure inspection (use graphbus_inspect after building)",
+        "Just writing code (validate before building)"
+      ],
+      "typical_workflow_position": "Step 1.5 (optional pre-build validation step)",
+      "follows_commands": ["graphbus_init", "graphbus_generate"],
+      "precedes_commands": ["graphbus_build"],
+      "helps_prevent": ["Build failures", "Runtime errors", "Circular dependencies", "Type mismatches", "Missing decorators"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agents_dir": {
+            "type": "string",
+            "description": "Directory containing agent .py source files to validate"
+          },
+          "strict": {
+            "type": "boolean",
+            "description": "Strict mode - treat warnings as errors (recommended for CI/CD)",
+            "default": false
+          },
+          "check_types": {
+            "type": "boolean",
+            "description": "Validate type annotations match schema definitions in decorators",
+            "default": false
+          },
+          "check_cycles": {
+            "type": "boolean",
+            "description": "Use NetworkX to detect circular dependencies (nx.find_cycle)",
+            "default": false
+          }
+        },
+        "required": ["agents_dir"]
+      }
+    },
+    {
+      "name": "graphbus_init",
+      "description": "Bootstrap a brand new GraphBus project from professional templates - creates complete project structure with working agents, tests, documentation, and deployment configurations. This is for STARTING COMPLETELY NEW PROJECTS from scratch. Generates a full directory structure including agents/ with example agent implementations, tests/ with pytest test files, README.md with setup instructions, requirements.txt with dependencies, .gitignore, and deployment configs. Each template demonstrates different GraphBus patterns: 'basic' teaches fundamentals with 3-agent pub/sub, 'microservices' shows production API gateway pattern, 'etl' demonstrates data pipelines, 'chatbot' shows stateful conversational agents, 'workflow' illustrates multi-step approval processes. The generated code is immediately buildable and runnable - you can graphbus_build and graphbus_run right away to see a working system.",
+      "detailed_usage": "Use this command at the very start of a conversation when the user wants to build a new GraphBus system. This is typically the first command in a workflow sequence. The templates are carefully designed to teach GraphBus patterns - each one is a complete, working system that demonstrates best practices. After running graphbus_init, you should immediately follow with graphbus_build to generate artifacts, then optionally graphbus_inspect to show the user what was created, and finally graphbus_run to demonstrate the working system. The 'basic' template is best for learning (3 simple agents with pub/sub), 'microservices' is best for production patterns (API gateway + backend services), 'etl' is best for data processing (extract/transform/load pipeline), 'chatbot' is best for AI applications (conversational agent with memory), 'workflow' is best for business processes (multi-step approvals with notifications). Each template includes the dependency graph structure in comments explaining why agents are connected the way they are.",
+      "phase": "PROJECT_INIT",
+      "creates": [
+        "Complete project directory structure",
+        "Working agent implementations with @agent decorators",
+        "Unit tests with pytest",
+        "README.md with getting started guide",
+        "requirements.txt with dependencies",
+        ".gitignore with Python/GraphBus ignores",
+        "Example .graphbus.yaml configuration",
+        "Docker and Kubernetes configs (microservices template)"
+      ],
+      "templates": {
+        "basic": "3 agents (HelloService, LoggerService, PrinterService) demonstrating pub/sub - best for learning GraphBus fundamentals in 5 minutes",
+        "microservices": "5 agents (APIGateway, UserService, OrderService, PaymentService, NotificationService) - production API pattern in 20 minutes",
+        "etl": "4 agents (DataExtractor, DataTransformer, DataValidator, DataLoader) - data pipeline pattern in 15 minutes",
+        "chatbot": "3 agents (ChatOrchestrator, ContextManager, ResponseGenerator) - conversational AI with memory in 15 minutes",
+        "workflow": "5 agents (WorkflowCoordinator, ApprovalAgent, NotificationAgent, AuditLogger, MetricsCollector) - business process in 20 minutes"
+      },
+      "when_to_use": [
+        "Very start of conversation when user wants to build new system",
+        "User says: 'create new project', 'start fresh', 'I want to build X'",
+        "Teaching: 'let me show you a working GraphBus system'",
+        "User wants to learn a specific pattern (microservices, ETL, etc.)",
+        "User is brand new to GraphBus and needs starting point",
+        "Creating proof-of-concept or demo"
+      ],
+      "when_not_to_use": [
+        "Project directory already exists (will fail unless --force)",
+        "User wants to add agent to existing project (use graphbus_generate)",
+        "User just wants to see example without creating project (use graphbus_load_example)",
+        "Modifying existing codebase"
+      ],
+      "typical_workflow_position": "Step 0 (very first step when starting new project)",
+      "follows_commands": [],
+      "precedes_commands": ["graphbus_build", "graphbus_validate"],
+      "typical_sequence": "graphbus_init → graphbus_build → graphbus_inspect → graphbus_run",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_name": {
+            "type": "string",
+            "description": "Name for project directory (will be created) - use kebab-case (e.g., 'order-system', 'my-chatbot')"
+          },
+          "template": {
+            "type": "string",
+            "enum": ["basic", "microservices", "etl", "chatbot", "workflow"],
+            "description": "Template: basic=learning, microservices=production, etl=data, chatbot=AI, workflow=business",
+            "default": "basic"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Parent directory where project will be created as subdirectory",
+            "default": "."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Overwrite existing directory (DESTRUCTIVE - only use if user explicitly confirms)",
+            "default": false
+          }
+        },
+        "required": ["project_name"]
+      }
+    },
+    {
+      "name": "graphbus_generate",
+      "description": "Generate a single agent's boilerplate code in an existing project - creates agent class file with decorators, method stubs, subscription handlers, docstrings, and unit tests. This is for ADDING NEW AGENTS to projects that already exist, not creating new projects. Takes the agent name and specifications (methods, topics, features) and generates properly structured Python code with all GraphBus decorators applied correctly. Also generates corresponding test file with pytest test stubs. The generated code includes TODO comments where the user needs to add business logic. This command understands the difference between methods (called directly) and subscription handlers (triggered by events) and generates appropriate signatures for each.",
+      "detailed_usage": "Use this command when the user describes a new agent they want to add to their existing project, or when expanding a project with additional capabilities. For example, if user says 'I need an agent that processes payments', you would use graphbus_generate with name='PaymentService', methods=['process_payment', 'refund_payment'], subscribes=['/order/created'], publishes=['/payment/completed', '/payment/failed']. The generator creates properly structured code with @agent decorator, @subscribes decorators for event handlers, @publishes hints in docstrings, and @schema_method decorators for all methods. It generates both the agent file (agents/payment_service.py) and test file (tests/test_payment_service.py). Use --with_llm flag if the agent needs AI/LLM capabilities (adds LLMClient integration). Use --with_state flag if the agent needs to persist state between restarts (adds get_state/set_state methods). After generation, user should implement the TODO-marked business logic, then run graphbus_build to incorporate the new agent into the system.",
+      "phase": "PROJECT_DEVELOPMENT",
+      "generates": [
+        "Agent class file with @agent decorator",
+        "Method stubs with @schema_method decorators",
+        "Subscription handlers with @subscribes decorators",
+        "Publishing hints in docstrings",
+        "Docstring templates with TODO markers",
+        "Unit test file with pytest fixtures",
+        "Test stubs for each method",
+        "Optional: LLM client integration",
+        "Optional: State management methods"
+      ],
+      "when_to_use": [
+        "User describes new agent: 'I need an agent that does X'",
+        "Adding functionality to existing project: 'add a notification service'",
+        "User asks: 'create an agent', 'generate agent code', 'add agent for X'",
+        "After discussing requirements: 'let me generate that for you'",
+        "Expanding system with new capabilities",
+        "After graphbus_init when user wants to customize beyond template"
+      ],
+      "when_not_to_use": [
+        "Starting new project (use graphbus_init with template)",
+        "Agent file already exists (will fail - edit manually instead)",
+        "User wants to modify existing agent (edit source code directly)",
+        "Just exploring (use graphbus_load_example)"
+      ],
+      "typical_workflow_position": "Step 1 (creating first agent) or Step N (adding more agents to existing project)",
+      "follows_commands": ["graphbus_init"],
+      "precedes_commands": ["graphbus_build"],
+      "typical_sequence": "graphbus_generate → [user implements logic] → graphbus_build → graphbus_run",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "enum": ["agent"],
+            "description": "Type of entity to generate (currently only 'agent' supported, future: 'topic', 'workflow')",
+            "default": "agent"
+          },
+          "name": {
+            "type": "string",
+            "description": "Agent name in PascalCase (e.g., OrderProcessor, PaymentService, NotificationAgent)"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Directory to create agent file (typically 'agents/' in project root)",
+            "default": "agents"
+          },
+          "methods": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of method names (snake_case) to generate, e.g., ['process_order', 'validate_payment', 'send_notification']"
+          },
+          "subscribes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Topics this agent subscribes to (event handlers), e.g., ['/order/created', '/payment/authorized']"
+          },
+          "publishes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Topics this agent publishes to (documented in docstrings), e.g., ['/order/processed', '/payment/failed']"
+          },
+          "with_llm": {
+            "type": "boolean",
+            "description": "Add LLM client integration for AI-powered agents (OpenAI, Anthropic, etc.)",
+            "default": false
+          },
+          "with_state": {
+            "type": "boolean",
+            "description": "Add state management methods (get_state/set_state) for persistent agent state",
+            "default": false
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "graphbus_load_example",
+      "description": "Load a complete, working GraphBus example project instantly - copies pre-built example with agents, tests, documentation, and working code to a directory. Perfect for learning, demonstrations, or as starting points for development. These are battle-tested, production-quality examples that demonstrate specific GraphBus patterns and can be run immediately with graphbus_build → graphbus_run. Each example is self-contained with README explaining the architecture, comments explaining the code, and working implementations. This is the fastest way to get hands-on with GraphBus - from zero to running system in under 2 minutes.",
+      "detailed_usage": "Use this command at the very start of a conversation when you want to show the user a working GraphBus system immediately, or when teaching specific patterns. This is perfect for 'show me how GraphBus works' or 'demonstrate event-driven architecture' requests. The examples are ordered by complexity: 'hello-world' is simplest (3 agents, basic pub/sub, 5 minutes to understand), 'order-processing' shows realistic business workflow (4 agents with order→payment→shipment flow, 15 minutes), 'chatbot' demonstrates stateful AI agents (3 agents with conversation context, 10 minutes), 'data-pipeline' shows ETL patterns (4 agents extracting/transforming/loading data, 15 minutes), 'api-gateway' shows microservice patterns (5 agents with REST gateway, 20 minutes), 'event-sourcing' shows advanced event patterns (4 agents with event store and replay, 20 minutes), 'saga-pattern' shows distributed transactions (5 agents coordinating multi-step process, 25 minutes), 'circuit-breaker' shows fault tolerance (3 agents with failure handling, 15 minutes). After loading, immediately run graphbus_build → graphbus_run to show the working system, then use graphbus_inspect to explain the architecture.",
+      "phase": "LEARNING",
+      "examples": {
+        "hello-world": {
+          "agents": 3,
+          "complexity": "beginner",
+          "time_minutes": 5,
+          "demonstrates": "Basic pub/sub, event-driven communication, agent lifecycle",
+          "architecture": "HelloService publishes greetings → LoggerService logs them → PrinterService displays them"
+        },
+        "order-processing": {
+          "agents": 4,
+          "complexity": "intermediate",
+          "time_minutes": 15,
+          "demonstrates": "Business workflow, sequential processing, error handling",
+          "architecture": "OrderService validates orders → PaymentService processes payment → ShipmentService arranges shipping → NotificationService confirms"
+        },
+        "chatbot": {
+          "agents": 3,
+          "complexity": "intermediate",
+          "time_minutes": 10,
+          "demonstrates": "Stateful agents, conversation context, AI integration",
+          "architecture": "ChatOrchestrator manages flow → ContextManager maintains state → ResponseGenerator creates replies"
+        },
+        "data-pipeline": {
+          "agents": 4,
+          "complexity": "intermediate",
+          "time_minutes": 15,
+          "demonstrates": "ETL pattern, data transformation, validation",
+          "architecture": "DataExtractor fetches data → DataTransformer processes → DataValidator checks quality → DataLoader stores"
+        },
+        "api-gateway": {
+          "agents": 5,
+          "complexity": "advanced",
+          "time_minutes": 20,
+          "demonstrates": "Microservices, REST API pattern, service orchestration",
+          "architecture": "APIGateway routes requests → UserService/OrderService/PaymentService handle domains → NotificationService cross-cuts"
+        },
+        "event-sourcing": {
+          "agents": 4,
+          "complexity": "advanced",
+          "time_minutes": 20,
+          "demonstrates": "Event sourcing, event replay, temporal queries",
+          "architecture": "EventStore persists all events → Aggregator reconstructs state → QueryService answers questions → Projector maintains views"
+        },
+        "saga-pattern": {
+          "agents": 5,
+          "complexity": "advanced",
+          "time_minutes": 25,
+          "demonstrates": "Distributed transactions, compensation, orchestration",
+          "architecture": "SagaOrchestrator coordinates → OrderService/PaymentService/ShipmentService participate → CompensationService handles rollbacks"
+        },
+        "circuit-breaker": {
+          "agents": 3,
+          "complexity": "intermediate",
+          "time_minutes": 15,
+          "demonstrates": "Fault tolerance, failure handling, auto-recovery",
+          "architecture": "ServiceAgent makes calls → CircuitBreaker monitors failures → FallbackService provides degraded service"
+        }
+      },
+      "when_to_use": [
+        "Very start of conversation: show working example immediately",
+        "User asks: 'show me an example', 'how does X work', 'demonstrate GraphBus'",
+        "Teaching specific pattern: 'show me saga pattern', 'how do microservices work'",
+        "User wants to experiment: 'I want to try GraphBus quickly'",
+        "Learning by example: 'show me working code'",
+        "User is brand new and needs concrete starting point"
+      ],
+      "when_not_to_use": [
+        "User wants custom project (use graphbus_init with template)",
+        "User wants to learn by building from scratch (use graphbus_generate)",
+        "Example directory already exists (will conflict)",
+        "User wants production code (examples are for learning)"
+      ],
+      "typical_workflow_position": "Step 0 (very first, for immediate hands-on)",
+      "follows_commands": [],
+      "precedes_commands": ["graphbus_build", "graphbus_inspect", "graphbus_run"],
+      "typical_sequence": "graphbus_load_example → graphbus_build → graphbus_inspect → graphbus_run → graphbus_publish/call",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "example": {
+            "type": "string",
+            "enum": [
+              "hello-world",
+              "order-processing",
+              "chatbot",
+              "data-pipeline",
+              "api-gateway",
+              "event-sourcing",
+              "saga-pattern",
+              "circuit-breaker"
+            ],
+            "description": "Example to load - hello-world recommended for beginners, others by complexity/pattern"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Directory where example will be created (creates subdirectory with example name)",
+            "default": "."
+          }
+        },
+        "required": ["example"]
+      }
+    },
+    {
+      "name": "graphbus_call",
+      "description": "Directly invoke an agent method in a RUNNING runtime session - RPC-style method call with arguments and return value. This is RUNTIME MODE interaction that requires an active session from graphbus_run. Bypasses the message bus and calls the method synchronously, returning the result immediately. Use this for testing specific agent methods, triggering specific behaviors, or when you need the return value. This is different from graphbus_publish which triggers event-driven flow - graphbus_call is direct invocation while graphbus_publish is asynchronous messaging. The method executes in the agent's context with access to its state, and you get the return value back to examine or use.",
+      "detailed_usage": "Use this command after graphbus_run has started a runtime session and returned a session_id. This is for testing individual agent methods or triggering specific behaviors without going through the event-driven flow. For example, if you have an OrderService with a process_order method, you can call it directly with specific arguments to test its behavior. The difference between graphbus_call and graphbus_publish is crucial: graphbus_call is synchronous RPC (call method, get result immediately), while graphbus_publish is asynchronous messaging (publish event, all subscribers process it independently). Use graphbus_call when you want to test a specific method, need the return value, or want deterministic execution. Use graphbus_publish when you want to trigger the event-driven workflow where multiple agents react to an event. The method arguments must match the method signature - use a JSON object with parameter names as keys. You can call methods multiple times on the same session without restarting the runtime.",
+      "phase": "RUNTIME",
+      "requires_active_session": true,
+      "execution_model": "Synchronous RPC - blocks until method returns",
+      "when_to_use": [
+        "After graphbus_run (have session_id)",
+        "Testing specific agent method: 'call the process_order method with this data'",
+        "Need return value: 'what does this method return'",
+        "Debugging: 'does this method work correctly'",
+        "Demonstrating: 'let me show you what this agent does'",
+        "Direct invocation needed (not event-driven flow)",
+        "Want deterministic, synchronous execution"
+      ],
+      "when_not_to_use": [
+        "Runtime not started (run graphbus_run first)",
+        "No session_id available",
+        "Want event-driven flow (use graphbus_publish)",
+        "Want to see method definition (use graphbus_inspect)",
+        "Method doesn't exist (check with graphbus_inspect first)",
+        "Want asynchronous messaging"
+      ],
+      "typical_workflow_position": "Step 4+ (after run, during testing/interaction)",
+      "follows_commands": ["graphbus_run"],
+      "parallel_commands": ["graphbus_publish", "graphbus_stats"],
+      "vs_publish": "graphbus_call is synchronous RPC (direct method call), graphbus_publish is asynchronous messaging (event to all subscribers)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Runtime session ID from graphbus_run (REQUIRED - identifies which runtime to use)"
+          },
+          "agent": {
+            "type": "string",
+            "description": "Agent name exactly as defined in @agent decorator (e.g., 'OrderService', 'PaymentProcessor')"
+          },
+          "method": {
+            "type": "string",
+            "description": "Method name to call - must exist on agent (e.g., 'process_order', 'validate_payment')"
+          },
+          "args": {
+            "type": "object",
+            "description": "Method arguments as JSON object with parameter names as keys (e.g., {\"order_id\": \"123\", \"amount\": 99.99})"
+          }
+        },
+        "required": ["session_id", "agent", "method"]
+      }
+    },
+    {
+      "name": "graphbus_publish",
+      "description": "Publish an event to the message bus in a RUNNING runtime - triggers event-driven workflow where all subscribed agents receive and process the event asynchronously. This is RUNTIME MODE interaction that requires an active session. The event flows through the system according to the topic subscription graph built during graphbus_build - all agents with @subscribes decorators matching this topic will receive the event in separate threads. This is how agents communicate in GraphBus - loosely coupled, asynchronous, event-driven messaging. Unlike graphbus_call which invokes one method synchronously, graphbus_publish can trigger multiple agents to react, creating cascading event flows through your agent graph.",
+      "detailed_usage": "Use this command after graphbus_run when you want to trigger event-driven workflows or test pub/sub behavior. Publishing an event to a topic causes ALL agents subscribed to that topic to receive and process it concurrently. For example, publishing to '/order/created' might trigger PaymentService to process payment, NotificationService to send confirmation email, and AuditLogger to record the event - all simultaneously. This demonstrates the power of event-driven architecture: loose coupling (publisher doesn't know subscribers), extensibility (add new subscribers without changing publisher), and concurrent processing (all subscribers run in parallel). The payload should match the schema expected by subscribers - you can check subscription expectations with graphbus_inspect. Events are routed according to the event flow graph (topic subscriptions) not the dependency DAG. You can publish multiple events to create complex workflows, and use graphbus_stats to see how events were processed. This is the primary way agents communicate in production GraphBus systems.",
+      "phase": "RUNTIME",
+      "requires_active_session": true,
+      "execution_model": "Asynchronous pub/sub - all subscribers process concurrently in separate threads",
+      "networkx_usage": "Uses event flow graph (not dependency DAG) to route messages - all agents subscribed to topic receive the event",
+      "routing": "Message bus uses topic subscription mappings from .graphbus/topics.json to deliver events to all subscribers concurrently",
+      "when_to_use": [
+        "After graphbus_run (have session_id)",
+        "User wants to trigger workflow: 'publish an order created event'",
+        "Testing pub/sub: 'see what happens when I publish this'",
+        "Demonstrating: 'watch how agents react to events'",
+        "Event-driven testing: 'trigger the payment flow'",
+        "Want to see cascading effects through agent graph",
+        "Testing event-driven architecture",
+        "Want multiple agents to react to same event"
+      ],
+      "when_not_to_use": [
+        "Runtime not started (run graphbus_run first)",
+        "No session_id available",
+        "Want direct method call with return value (use graphbus_call)",
+        "Just want to see subscriptions (use graphbus_inspect)",
+        "No agents subscribe to this topic (check with graphbus_inspect first)",
+        "Want synchronous execution"
+      ],
+      "typical_workflow_position": "Step 4+ (after run, during event flow testing)",
+      "follows_commands": ["graphbus_run"],
+      "parallel_commands": ["graphbus_call", "graphbus_stats"],
+      "vs_call": "graphbus_publish is asynchronous messaging (event to all subscribers), graphbus_call is synchronous RPC (direct method call)",
+      "triggers": "All agents with @subscribes decorators matching this topic will receive and process the event concurrently",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Runtime session ID from graphbus_run (REQUIRED - identifies which runtime to use)"
+          },
+          "topic": {
+            "type": "string",
+            "description": "Topic to publish to - must match format in @subscribes decorators (e.g., '/order/created', '/payment/completed')"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Event data as JSON object - should match schema expected by subscribers (e.g., {\"order_id\": \"123\", \"amount\": 99.99, \"items\": [...]})"
+          }
+        },
+        "required": ["session_id", "topic", "payload"]
+      }
+    },
+    {
+      "name": "graphbus_stats",
+      "description": "Get real-time statistics and health metrics from a RUNNING runtime session - shows agent status, message counts, event delivery statistics, performance metrics, error rates, and system health. This is RUNTIME MODE monitoring that requires an active session. Provides comprehensive view of what's happening in the running system including which agents are healthy, how many messages have been processed, event delivery success rates, recent event history, and performance characteristics. Essential for monitoring, debugging, and understanding runtime behavior.",
+      "detailed_usage": "Use this command after graphbus_run and especially after graphbus_call or graphbus_publish to see what happened. This is your window into the running system - it shows you everything about runtime state and behavior. The stats include: (1) agent health status for each agent in the system, (2) message bus statistics showing total messages published, delivered, and failed, (3) event history showing recent events with timestamps and payloads, (4) performance metrics including average processing time per agent and method, (5) error rates and failure counts, (6) subscription statistics showing which topics are most active. Use this when user asks 'is it working', 'what happened', 'how many messages were processed', 'why is X slow', or 'are there any errors'. After publishing events, check stats to verify they were delivered correctly. After multiple operations, check stats to understand system behavior over time. The statistics are cumulative since runtime start, so you can see total activity across multiple interactions.",
+      "phase": "RUNTIME",
+      "requires_active_session": true,
+      "shows": [
+        "Agent health status (healthy/degraded/failed per agent)",
+        "Message bus statistics (published/delivered/failed counts)",
+        "Recent event history (last N events with timestamps)",
+        "Performance metrics (avg processing time per agent/method)",
+        "Error rates and failure counts per agent",
+        "Subscription activity (which topics are busiest)",
+        "Runtime uptime and resource usage",
+        "Event delivery success rate"
+      ],
+      "when_to_use": [
+        "After graphbus_run (have session_id)",
+        "After graphbus_publish to see if events were delivered",
+        "After graphbus_call to check execution",
+        "User asks: 'show me runtime stats', 'what's happening', 'is it working'",
+        "Monitoring: 'how many messages processed', 'any errors'",
+        "Debugging: 'why is agent slow', 'are events being delivered'",
+        "Performance analysis: 'what's taking time'",
+        "Periodically during long-running sessions"
+      ],
+      "when_not_to_use": [
+        "Runtime not started (no session_id)",
+        "Want static artifact info (use graphbus_inspect)",
+        "Want detailed profiling (use graphbus_profile)",
+        "Want build-time information (use graphbus_inspect)"
+      ],
+      "typical_workflow_position": "Step 4+ (during or after runtime operations)",
+      "follows_commands": ["graphbus_run", "graphbus_call", "graphbus_publish"],
+      "parallel_commands": ["graphbus_call", "graphbus_publish"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Runtime session ID from graphbus_run (REQUIRED - identifies which runtime to query)"
+          }
+        },
+        "required": ["session_id"]
+      }
+    },
+    {
+      "name": "graphbus_doctor",
+      "description": "Run comprehensive health check and diagnostics on GraphBus installation, project configuration, and agent code - validates Python version, checks dependencies, analyzes agent syntax, detects common configuration issues, identifies circular dependencies, checks for deprecated API usage, and provides actionable recommendations for fixing problems. This is a BUILD MODE diagnostic tool that analyzes your setup without running anything. Acts like a linter, troubleshooter, and installation validator combined. Provides clear, actionable error messages with suggestions for fixes. Can optionally attempt automatic fixes with --fix flag.",
+      "detailed_usage": "Use this command whenever something isn't working and you need to diagnose the problem. This is your first stop for troubleshooting - it checks everything from Python version to agent code syntax to configuration files. The doctor performs multiple layers of checks: (1) System checks (Python version >= 3.9, GraphBus packages installed, dependencies present), (2) Project checks (project structure valid, configuration files correct, .graphbus.yaml valid if present), (3) Agent code checks (valid Python syntax, @agent decorators present, no obvious errors), (4) Dependency checks (uses NetworkX to detect circular dependencies same as graphbus_validate), (5) Best practice checks (warns about deprecated APIs, suggests improvements). The --fix flag will attempt automatic repairs for common issues like missing __init__.py files, incorrect directory structure, or fixable syntax errors. This is particularly useful for new users who are setting up GraphBus for the first time, or when you encounter errors and aren't sure what's wrong. The output clearly categorizes issues as CRITICAL (must fix), WARNING (should fix), or INFO (nice to have).",
+      "phase": "BUILD",
+      "networkx_usage": "Uses same cycle detection as graphbus_validate (nx.find_cycle) to check for circular dependencies",
+      "checks": [
+        "Python version >= 3.9",
+        "GraphBus core and CLI packages installed with correct versions",
+        "All dependencies in requirements.txt installed",
+        "Project directory structure valid (agents/, tests/, .graphbus/)",
+        "Agent files have valid Python syntax",
+        "Agent files have @agent decorators",
+        "No circular dependencies (NetworkX cycle detection)",
+        "Configuration files valid (.graphbus.yaml if present)",
+        "No deprecated API usage (warns about old decorators)",
+        "Common mistakes (missing __init__.py, wrong imports)",
+        "File permissions correct",
+        "Build artifacts up-to-date with source code"
+      ],
+      "when_to_use": [
+        "User reports: 'it's not working', 'getting errors', 'installation failed'",
+        "Preventive: 'check if everything is set up correctly'",
+        "After new installation: 'verify GraphBus is ready'",
+        "Before important operations: 'make sure my project is healthy'",
+        "Troubleshooting: 'diagnose issues'",
+        "After major changes to detect problems early",
+        "New user setup validation"
+      ],
+      "when_not_to_use": [
+        "Runtime monitoring (use graphbus_stats)",
+        "Specific code validation (use graphbus_validate)",
+        "Build errors with known cause (just fix and rebuild)",
+        "System is working fine (no need for diagnostics)"
+      ],
+      "typical_workflow_position": "Step 0 (when problems occur) or preventive checks anytime",
+      "follows_commands": [],
+      "precedes_commands": ["graphbus_build", "graphbus_validate"],
+      "output_categories": ["CRITICAL (must fix)", "WARNING (should fix)", "INFO (suggestions)"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_dir": {
+            "type": "string",
+            "description": "Project directory to check (checks installation if not specified)",
+            "default": "."
+          },
+          "fix": {
+            "type": "boolean",
+            "description": "Attempt automatic fixes for found issues (use with caution - creates backups)",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "graphbus_profile",
+      "description": "Profile performance of running agent system - collects detailed execution metrics including method execution times, call frequencies, performance bottlenecks, and event routing statistics. This is a RUNTIME MODE diagnostic tool that runs your agent system with instrumentation enabled to identify performance issues. Generates comprehensive reports showing which agents/methods are slow, how frequently they're called, where time is being spent, and recommendations for optimization. Supports multiple output formats including plain text reports, interactive HTML flame graphs, and JSON exports for external analysis tools.",
+      "detailed_usage": "Use this command when you need to understand performance characteristics of your agent system, identify bottlenecks, or optimize slow operations. The profiler runs your agents for a specified duration (default 60 seconds) while collecting detailed timing information for every method call and event delivery. It tracks execution time distribution across agents, identifies methods that exceed the bottleneck threshold (default 100ms), measures event routing latency, and provides statistical analysis of system performance. The HTML output format generates interactive flame graphs showing call stacks and time distribution visually. Use this when user asks 'why is my system slow', 'which agent is the bottleneck', 'optimize performance', or 'profile my agents'. The profiler adds minimal overhead (<5%) so measurements are accurate. After profiling, you'll see which methods need optimization, whether agents are CPU-bound or I/O-bound, and how event routing contributes to latency.",
+      "phase": "RUNTIME",
+      "requires_runtime_start": true,
+      "profiling_overhead": "~5% (minimal impact on measurements)",
+      "output_formats": {
+        "txt": "Plain text report with tables - good for terminal viewing",
+        "html": "Interactive flame graph with charts - best for deep analysis",
+        "json": "Structured data export - for external tools or custom analysis"
+      },
+      "when_to_use": [
+        "User asks: 'why is my system slow', 'profile my agents', 'find bottlenecks'",
+        "Performance optimization: 'which methods are slowest'",
+        "Before production deployment: 'verify performance characteristics'",
+        "After major changes: 'check performance impact'",
+        "Investigating latency issues",
+        "Understanding resource usage patterns"
+      ],
+      "when_not_to_use": [
+        "Just want runtime stats (use graphbus_stats - lighter weight)",
+        "System isn't slow (no need for profiling overhead)",
+        "Want build-time analysis (profiling is runtime only)",
+        "Quick checks (profiling requires minutes to collect meaningful data)"
+      ],
+      "typical_workflow_position": "Performance analysis phase (after system works, when optimizing)",
+      "follows_commands": ["graphbus_build", "graphbus_run"],
+      "parallel_commands": ["graphbus_stats"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Profiling duration in seconds (default: 60, recommended: 30-120)",
+            "default": 60
+          },
+          "output": {
+            "type": "string",
+            "description": "Save report to file - .txt (plain), .html (flame graph), .json (data export)"
+          },
+          "threshold": {
+            "type": "number",
+            "description": "Bottleneck threshold in milliseconds - methods slower than this are flagged (default: 100ms)",
+            "default": 100.0
+          },
+          "no_message_bus": {
+            "type": "boolean",
+            "description": "Disable message bus (profile isolated agents only)",
+            "default": false
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_dashboard",
+      "description": "Launch interactive web dashboard for real-time monitoring and visualization of running GraphBus system - provides live views of agent health, event flows, performance metrics, message bus activity, and system topology. This is a RUNTIME MODE visualization tool that starts a web server (default: http://localhost:8050) displaying real-time dashboards with charts, graphs, and interactive visualizations. Shows agent dependency graph with live health indicators, event flow visualization with animated message routing, performance charts tracking latency over time, message bus statistics, and error logs. Essential for production monitoring, demonstrations, and understanding complex system behavior.",
+      "detailed_usage": "Use this command to visualize and monitor a running GraphBus system through a web interface. The dashboard connects to an active runtime and displays comprehensive real-time information in an intuitive visual format. Features include: (1) Network graph view showing agents and their relationships with live health status (green/yellow/red), (2) Event flow visualization showing messages flowing between agents in real-time, (3) Performance charts displaying method execution times, message throughput, and latency trends over time, (4) Message bus statistics with counters for published/delivered/failed events, (5) Error console showing recent errors and stack traces, (6) Agent detail panels with method signatures and state. The dashboard auto-refreshes every few seconds to stay current. Use this when demonstrating GraphBus to stakeholders, monitoring production systems, debugging complex event flows, or understanding system behavior visually. Access the dashboard at http://localhost:8050 (or custom port) in any web browser.",
+      "phase": "RUNTIME",
+      "requires_runtime_start": true,
+      "creates_web_server": true,
+      "default_url": "http://localhost:8050",
+      "features": [
+        "Network graph with live health indicators",
+        "Event flow visualization with animation",
+        "Performance charts (latency, throughput)",
+        "Message bus statistics dashboard",
+        "Error console with stack traces",
+        "Agent detail panels",
+        "Auto-refresh (configurable interval)"
+      ],
+      "when_to_use": [
+        "User asks: 'show me a dashboard', 'visualize my system', 'monitor agents'",
+        "Demonstrating GraphBus to stakeholders",
+        "Production monitoring needs",
+        "Understanding complex event flows visually",
+        "Debugging: 'show me what's happening in real-time'",
+        "Training and education"
+      ],
+      "when_not_to_use": [
+        "Command-line only environment (no browser access)",
+        "Just need quick stats (use graphbus_stats - lighter)",
+        "System not running (dashboard needs active runtime)",
+        "Automated scripts (dashboard is interactive)"
+      ],
+      "typical_workflow_position": "Monitoring/visualization phase (during or after runtime)",
+      "follows_commands": ["graphbus_run"],
+      "parallel_commands": ["graphbus_stats", "graphbus_profile"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Web server port (default: 8050)",
+            "default": 8050
+          },
+          "host": {
+            "type": "string",
+            "description": "Web server host (default: localhost, use 0.0.0.0 for external access)",
+            "default": "localhost"
+          },
+          "no_browser": {
+            "type": "boolean",
+            "description": "Don't auto-open browser (useful for remote servers)",
+            "default": false
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_state",
+      "description": "Manage persisted agent state - view, inspect, and clear saved state for agents that use state persistence. This is a BUILD/RUNTIME MODE utility for managing the .graphbus/state/ directory where agents store persistent state (when enable_state_persistence is enabled). Provides commands to list all saved states, show state contents for specific agents, clear individual agent states, or clear all states. Useful for debugging state-related issues, resetting agents to clean state, inspecting what data agents are persisting, and managing state files. State persistence allows agents to survive restarts by saving their internal state to JSON files.",
+      "detailed_usage": "Use this command to manage agent state files in the .graphbus/state/ directory. State persistence is an advanced feature (Tranche 4) that allows agents to save their internal state to disk, surviving runtime restarts. This command provides several subcommands: (1) 'graphbus state list' shows all saved state files with agent names and file sizes, (2) 'graphbus state show <agent>' displays the JSON contents of a specific agent's saved state, (3) 'graphbus state clear <agent>' deletes the state file for one agent (forcing clean restart), (4) 'graphbus state clear-all' deletes all saved states (complete reset). Use this when debugging why an agent has unexpected behavior (inspect its state), when you want to reset an agent to initial conditions (clear its state), when managing disk usage (state files can grow large), or when understanding what data agents are persisting. State is only created when you run with --enable-state-persistence flag.",
+      "phase": "BUILD",
+      "manages": ".graphbus/state/ directory with agent state JSON files",
+      "subcommands": {
+        "list": "List all saved agent states with file sizes",
+        "show": "Display JSON contents of specific agent's state",
+        "clear": "Delete state for specific agent (clean restart)",
+        "clear-all": "Delete all saved states (complete reset)"
+      },
+      "when_to_use": [
+        "User asks: 'show agent state', 'what state is saved', 'reset agent'",
+        "Debugging state-related issues: 'why does agent remember X'",
+        "Resetting to clean state: 'clear saved data'",
+        "Inspecting persistence: 'what is agent storing'",
+        "Managing disk usage: 'state files are large'",
+        "Before/after state persistence testing"
+      ],
+      "when_not_to_use": [
+        "State persistence not enabled (no state files exist)",
+        "Want runtime statistics (use graphbus_stats)",
+        "Want to modify state (edit JSON files manually)",
+        "Agents don't use state persistence"
+      ],
+      "typical_workflow_position": "State management (when using state persistence feature)",
+      "follows_commands": ["graphbus_run"],
+      "parallel_commands": ["graphbus_stats", "graphbus_inspect"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subcommand": {
+            "type": "string",
+            "enum": ["list", "show", "clear", "clear-all"],
+            "description": "State management subcommand to execute"
+          },
+          "agent_name": {
+            "type": "string",
+            "description": "Agent name (required for 'show' and 'clear' subcommands)"
+          },
+          "state_dir": {
+            "type": "string",
+            "description": "State directory location (default: .graphbus/state)",
+            "default": ".graphbus/state"
+          }
+        },
+        "required": ["subcommand"]
+      }
+    },
+    {
+      "name": "graphbus_docker",
+      "description": "Generate and manage Docker containerization for GraphBus projects - creates Dockerfiles, builds container images, runs containers, and generates docker-compose configurations for multi-agent deployments. This is a DEPLOYMENT MODE tool that packages your GraphBus agents into production-ready Docker containers. Supports single-container deployments (all agents in one container) and multi-container deployments (each agent in separate container with docker-compose orchestration). Generates optimized Dockerfiles with proper base images, dependency installation, multi-stage builds, and health checks. Essential for deploying GraphBus systems to Docker-based environments like Docker Swarm, cloud container services, or local Docker.",
+      "detailed_usage": "Use this command to containerize your GraphBus project for deployment. The docker subcommands provide complete containerization workflow: (1) 'graphbus docker generate' creates Dockerfile and .dockerignore with best practices (multi-stage build, minimal base image, proper caching), (2) 'graphbus docker build' builds the Docker image with proper tagging, (3) 'graphbus docker run' starts containers locally for testing, (4) 'graphbus docker compose' generates docker-compose.yml for orchestrating multiple agents with networking, volumes, and health checks. The generated Dockerfiles use Python slim images, install only required dependencies, copy artifacts efficiently, and include health check endpoints. For production deployments, this creates reproducible container images that work across environments. Use when user wants to 'deploy to Docker', 'create containers', 'run in Docker', or 'deploy to cloud'. After generation, standard docker commands work (docker build, docker run, docker push).",
+      "phase": "DEPLOYMENT",
+      "container_strategies": {
+        "single": "All agents in one container - simpler, less resources, harder to scale",
+        "multi": "Each agent in separate container - microservices style, better scaling, more complex"
+      },
+      "subcommands": {
+        "generate": "Create Dockerfile and .dockerignore",
+        "build": "Build Docker image from Dockerfile",
+        "run": "Run container locally for testing",
+        "compose": "Generate docker-compose.yml for multi-container orchestration"
+      },
+      "when_to_use": [
+        "User asks: 'deploy to Docker', 'create container', 'containerize my agents'",
+        "Preparing for cloud deployment (most cloud platforms use containers)",
+        "Want reproducible deployments across environments",
+        "Need isolation and resource management",
+        "Deploying to Docker Swarm, ECS, Cloud Run, etc.",
+        "Local testing in production-like environment"
+      ],
+      "when_not_to_use": [
+        "Not deploying (local development only)",
+        "Target environment doesn't use Docker",
+        "Haven't built artifacts yet (docker needs .graphbus/)",
+        "Want Kubernetes deployment (use graphbus_k8s instead)"
+      ],
+      "typical_workflow_position": "Deployment phase (after development and testing complete)",
+      "follows_commands": ["graphbus_build", "graphbus_validate"],
+      "precedes_commands": ["graphbus_k8s", "graphbus_ci"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subcommand": {
+            "type": "string",
+            "enum": ["generate", "build", "run", "compose"],
+            "description": "Docker subcommand to execute"
+          },
+          "project_dir": {
+            "type": "string",
+            "description": "Project directory (must contain .graphbus/)",
+            "default": "."
+          },
+          "image_name": {
+            "type": "string",
+            "description": "Docker image name and tag (e.g., 'my-agents:latest')"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": ["single", "multi"],
+            "description": "Container strategy: single (monolith) or multi (microservices)",
+            "default": "single"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Expose port for container (for API agents)",
+            "default": 8080
+          }
+        },
+        "required": ["subcommand"]
+      }
+    },
+    {
+      "name": "graphbus_k8s",
+      "description": "Generate and manage Kubernetes deployments for GraphBus projects - creates Kubernetes manifests (Deployments, Services, ConfigMaps, Secrets), applies configurations to clusters, monitors pod status, and streams logs. This is a DEPLOYMENT MODE tool for running GraphBus agents on Kubernetes with proper orchestration, scaling, networking, and resilience. Generates production-ready manifests with health checks, resource limits, rolling updates, and service discovery. Supports single-deployment (all agents in one pod) and multi-deployment (each agent as separate deployment) strategies. Essential for deploying to Kubernetes clusters whether on-premises, EKS, GKE, AKS, or other K8s platforms.",
+      "detailed_usage": "Use this command to deploy your GraphBus system to Kubernetes clusters. The k8s subcommands provide complete Kubernetes workflow: (1) 'graphbus k8s generate' creates manifests directory with Deployment, Service, ConfigMap YAML files following K8s best practices, (2) 'graphbus k8s apply' applies manifests to your current kubectl context cluster, (3) 'graphbus k8s status' shows pod status, ready replicas, and deployment health, (4) 'graphbus k8s logs' streams logs from agent pods for debugging. The generated manifests include proper resource requests/limits, liveness/readiness probes, rolling update strategies, pod disruption budgets, and service definitions for inter-agent communication. For production deployments, this creates scalable, resilient systems with automatic restarts, health monitoring, and zero-downtime updates. Use when deploying to cloud Kubernetes services (EKS, GKE, AKS), on-premises K8s, or when you need enterprise-grade orchestration with scaling, self-healing, and service mesh integration.",
+      "phase": "DEPLOYMENT",
+      "requires_kubectl": true,
+      "deployment_strategies": {
+        "single": "One Deployment with all agents - simpler management, monolithic scaling",
+        "multi": "Separate Deployments per agent - microservices style, independent scaling"
+      },
+      "generated_resources": [
+        "Deployment manifests with replicas and update strategy",
+        "Service manifests for agent communication",
+        "ConfigMap for configuration data",
+        "Secret for sensitive data (optional)",
+        "Ingress for external access (optional)",
+        "HorizontalPodAutoscaler for auto-scaling (optional)"
+      ],
+      "subcommands": {
+        "generate": "Create Kubernetes manifest YAML files",
+        "apply": "Apply manifests to cluster (kubectl apply)",
+        "status": "Show deployment and pod status",
+        "logs": "Stream logs from agent pods"
+      },
+      "when_to_use": [
+        "User asks: 'deploy to Kubernetes', 'deploy to K8s', 'create K8s manifests'",
+        "Deploying to cloud Kubernetes (EKS, GKE, AKS)",
+        "Need production orchestration with scaling and self-healing",
+        "Want zero-downtime deployments with rolling updates",
+        "Enterprise deployments requiring high availability",
+        "Integration with service mesh (Istio, Linkerd)"
+      ],
+      "when_not_to_use": [
+        "No Kubernetes cluster available",
+        "Simple deployments (Docker is simpler)",
+        "Local development only",
+        "Haven't built Docker images yet (K8s needs container images)",
+        "Not familiar with Kubernetes (steep learning curve)"
+      ],
+      "typical_workflow_position": "Advanced deployment phase (after Docker containerization)",
+      "follows_commands": ["graphbus_docker"],
+      "parallel_commands": ["graphbus_ci"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subcommand": {
+            "type": "string",
+            "enum": ["generate", "apply", "status", "logs"],
+            "description": "Kubernetes subcommand to execute"
+          },
+          "project_dir": {
+            "type": "string",
+            "description": "Project directory (must contain .graphbus/)",
+            "default": "."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Kubernetes namespace (default: default)",
+            "default": "default"
+          },
+          "image": {
+            "type": "string",
+            "description": "Docker image to deploy (must be pushed to registry)"
+          },
+          "replicas": {
+            "type": "integer",
+            "description": "Number of pod replicas (default: 1)",
+            "default": 1
+          },
+          "strategy": {
+            "type": "string",
+            "enum": ["single", "multi"],
+            "description": "Deployment strategy: single (monolith) or multi (microservices)",
+            "default": "single"
+          }
+        },
+        "required": ["subcommand"]
+      }
+    },
+    {
+      "name": "graphbus_ci",
+      "description": "Generate CI/CD pipeline configurations for GraphBus projects - creates workflow files for GitHub Actions, GitLab CI, Jenkins, and other CI/CD platforms. This is a DEPLOYMENT MODE tool that automates testing, building, and deploying GraphBus systems through continuous integration and deployment pipelines. Generates complete workflow definitions including test stages (run pytest), build stages (create artifacts and Docker images), validation stages (run graphbus_validate), and deployment stages (push containers, deploy to K8s). Essential for professional development workflows with automated quality gates, reproducible builds, and streamlined deployments.",
+      "detailed_usage": "Use this command to set up automated CI/CD pipelines for your GraphBus project. The ci subcommands generate platform-specific workflow configurations: (1) 'graphbus ci github' creates .github/workflows/graphbus-ci.yml for GitHub Actions with jobs for test, build, validate, docker build, and deploy, (2) 'graphbus ci gitlab' creates .gitlab-ci.yml with similar stages optimized for GitLab CI/CD, (3) 'graphbus ci jenkins' creates Jenkinsfile with declarative pipeline syntax. The generated pipelines include best practices like caching dependencies, running tests in parallel, generating test coverage reports, building and pushing Docker images to registries, validating agent code with graphbus_validate, and conditional deployment based on branch/tag. Use this when setting up professional development workflows, enabling code reviews with automated checks, deploying to staging/production automatically, or ensuring code quality with automated tests before merge.",
+      "phase": "DEPLOYMENT",
+      "generates_for_platforms": ["GitHub Actions", "GitLab CI", "Jenkins", "CircleCI (future)", "Azure Pipelines (future)"],
+      "pipeline_stages": [
+        "Install dependencies (pip install)",
+        "Run tests (pytest with coverage)",
+        "Validate agents (graphbus validate)",
+        "Build artifacts (graphbus build)",
+        "Build Docker image (if Dockerfile exists)",
+        "Push to registry (Docker Hub, ECR, GCR)",
+        "Deploy to environment (K8s, cloud platform)"
+      ],
+      "subcommands": {
+        "github": "Generate GitHub Actions workflow (.github/workflows/)",
+        "gitlab": "Generate GitLab CI configuration (.gitlab-ci.yml)",
+        "jenkins": "Generate Jenkinsfile (declarative pipeline)"
+      },
+      "when_to_use": [
+        "User asks: 'set up CI/CD', 'automate deployment', 'create pipeline'",
+        "Professional development requiring automated testing",
+        "Team collaboration with code review and quality gates",
+        "Automated deployments to staging/production",
+        "Ensuring code quality before merge",
+        "Continuous deployment to cloud platforms"
+      ],
+      "when_not_to_use": [
+        "Not using version control (CI/CD needs git)",
+        "Solo development with manual testing",
+        "Not ready for automation",
+        "No CI/CD platform available"
+      ],
+      "typical_workflow_position": "DevOps setup phase (alongside deployment configuration)",
+      "follows_commands": ["graphbus_docker", "graphbus_k8s"],
+      "parallel_commands": ["graphbus_contract", "graphbus_migrate"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": ["github", "gitlab", "jenkins"],
+            "description": "CI/CD platform to generate configuration for"
+          },
+          "project_dir": {
+            "type": "string",
+            "description": "Project directory",
+            "default": "."
+          },
+          "include_docker": {
+            "type": "boolean",
+            "description": "Include Docker build/push stages in pipeline",
+            "default": true
+          },
+          "include_k8s": {
+            "type": "boolean",
+            "description": "Include Kubernetes deployment stages",
+            "default": false
+          },
+          "docker_registry": {
+            "type": "string",
+            "description": "Docker registry URL (e.g., docker.io, ghcr.io, ECR URL)"
+          }
+        },
+        "required": ["platform"]
+      }
+    },
+    {
+      "name": "graphbus_contract",
+      "description": "Manage API contracts between agents - register, validate, compare, and track breaking changes in agent method signatures and event schemas. This is an ADVANCED MODE tool for maintaining API compatibility in evolving GraphBus systems with multiple agents and developers. Provides contract registry for storing agent API definitions, validation against registered contracts, diff analysis showing breaking vs non-breaking changes, and impact analysis showing which downstream agents are affected by contract changes. Essential for large systems where agents evolve independently and you need to prevent breaking changes that would crash dependent agents.",
+      "detailed_usage": "Use this command to manage API contracts between agents in large, evolving GraphBus systems. Contracts define the 'API surface' of each agent - its method signatures, event schemas, published topics, and dependencies. The contract subcommands provide complete contract lifecycle: (1) 'graphbus contract register' scans agent code and stores current contracts in registry (.graphbus/contracts/), (2) 'graphbus contract list' shows all registered contracts with versions, (3) 'graphbus contract validate' compares current code against registered contracts and identifies breaking changes (removed methods, changed signatures, removed topics), (4) 'graphbus contract diff' shows detailed comparison between two contract versions, (5) 'graphbus contract impact' uses NetworkX to analyze dependency graph and show which agents would be affected by proposed changes. Use this in team environments when multiple developers modify agents concurrently, during refactoring to ensure backward compatibility, in CI/CD pipelines to prevent merging breaking changes, and when coordinating changes across microservice teams.",
+      "phase": "ADVANCED",
+      "networkx_usage": "Uses dependency DAG and event flow graph to trace impact of contract changes - identifies all downstream agents affected by breaking changes",
+      "contract_elements": [
+        "Agent name and version",
+        "Method signatures with parameter types",
+        "Event schemas for @subscribes handlers",
+        "Published topic declarations",
+        "Agent dependencies",
+        "Backward compatibility flags"
+      ],
+      "breaking_changes": [
+        "Removing public methods",
+        "Changing method parameter names or types",
+        "Removing published topics",
+        "Changing event schema structure",
+        "Adding required dependencies"
+      ],
+      "subcommands": {
+        "register": "Register current agent contracts to registry",
+        "list": "List all registered contracts with versions",
+        "validate": "Validate current code against registered contracts",
+        "diff": "Show detailed diff between contract versions",
+        "impact": "Analyze which agents are affected by changes"
+      },
+      "when_to_use": [
+        "Large systems with many agents evolving independently",
+        "Team development with multiple developers changing agents",
+        "User asks: 'check for breaking changes', 'validate API compatibility'",
+        "Refactoring agents: 'what would break if I change this'",
+        "CI/CD integration: 'prevent breaking changes from merging'",
+        "Coordinating microservice team changes"
+      ],
+      "when_not_to_use": [
+        "Small projects with 1-3 agents",
+        "Solo development where you control all changes",
+        "Prototype phase (too early for contracts)",
+        "Agents don't expose APIs to other agents"
+      ],
+      "typical_workflow_position": "Advanced governance (for mature, large systems)",
+      "follows_commands": ["graphbus_build"],
+      "parallel_commands": ["graphbus_migrate", "graphbus_coherence"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subcommand": {
+            "type": "string",
+            "enum": ["register", "list", "validate", "diff", "impact"],
+            "description": "Contract management subcommand"
+          },
+          "agents_dir": {
+            "type": "string",
+            "description": "Directory containing agent source code",
+            "default": "agents"
+          },
+          "contract_registry": {
+            "type": "string",
+            "description": "Contract registry directory (default: .graphbus/contracts)",
+            "default": ".graphbus/contracts"
+          },
+          "agent": {
+            "type": "string",
+            "description": "Specific agent name (for diff, impact subcommands)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Contract version to compare against"
+          }
+        },
+        "required": ["subcommand"]
+      }
+    },
+    {
+      "name": "graphbus_migrate",
+      "description": "Manage data and schema migrations for agent state and contracts - create migration scripts, plan migrations, apply changes, rollback on failures, track migration history, and validate migration integrity. This is an ADVANCED MODE tool for evolving agent state schemas and system architecture over time without data loss. Provides migration framework similar to database migrations (like Alembic or Flyway) but for agent systems. Essential for long-lived production systems where agents and their data schemas evolve, state needs to be migrated between versions, and you need safe upgrade/downgrade paths.",
+      "detailed_usage": "Use this command to manage schema changes in evolving GraphBus systems. Migrations handle changes to agent state structures, event payload schemas, and system architecture. The migrate subcommands provide complete migration lifecycle: (1) 'graphbus migrate create' generates migration script template with up/down functions, (2) 'graphbus migrate plan' shows pending migrations and their effects without applying them, (3) 'graphbus migrate apply' executes pending migrations in order, updating state schemas and transforming data, (4) 'graphbus migrate rollback' reverts last migration if issues occur, (5) 'graphbus migrate status' shows migration history and current version, (6) 'graphbus migrate validate' checks migration scripts for errors before applying. Each migration has version number, up function (upgrade), down function (rollback), and checksum for integrity. Use this when evolving agent state structures ('user profile now needs email field'), changing event schemas ('order event needs new status field'), refactoring system architecture, or upgrading between GraphBus versions that change internal schemas.",
+      "phase": "ADVANCED",
+      "migration_types": [
+        "State schema migrations (add/remove/rename fields in agent state)",
+        "Event schema migrations (change event payload structure)",
+        "Agent contract migrations (evolve API surface)",
+        "System migrations (upgrade GraphBus versions)"
+      ],
+      "migration_lifecycle": "create → plan → validate → apply → (rollback if needed)",
+      "subcommands": {
+        "create": "Generate new migration script template",
+        "plan": "Preview pending migrations without applying",
+        "apply": "Execute pending migrations",
+        "rollback": "Revert last applied migration",
+        "status": "Show migration history and current version",
+        "validate": "Check migration scripts for errors"
+      },
+      "when_to_use": [
+        "Production systems where state schemas evolve over time",
+        "User asks: 'migrate data', 'change state schema', 'upgrade safely'",
+        "Adding fields to agent state structures",
+        "Changing event payload formats",
+        "Upgrading GraphBus versions",
+        "Refactoring system architecture with data preservation"
+      ],
+      "when_not_to_use": [
+        "New projects without production data",
+        "Prototype phase (no data to migrate)",
+        "Agents don't use state persistence",
+        "No schema changes planned",
+        "Can afford data loss (just clear state)"
+      ],
+      "typical_workflow_position": "Advanced maintenance (for production systems with evolving schemas)",
+      "follows_commands": ["graphbus_state"],
+      "parallel_commands": ["graphbus_contract", "graphbus_coherence"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subcommand": {
+            "type": "string",
+            "enum": ["create", "plan", "apply", "rollback", "status", "validate"],
+            "description": "Migration subcommand"
+          },
+          "name": {
+            "type": "string",
+            "description": "Migration name (for 'create' subcommand) - use descriptive name like 'add_user_email_field'"
+          },
+          "migration_dir": {
+            "type": "string",
+            "description": "Directory for migration scripts (default: .graphbus/migrations)",
+            "default": ".graphbus/migrations"
+          },
+          "steps": {
+            "type": "integer",
+            "description": "Number of migrations to rollback (default: 1)",
+            "default": 1
+          }
+        },
+        "required": ["subcommand"]
+      }
+    },
+    {
+      "name": "graphbus_coherence",
+      "description": "Check system coherence and consistency - validates that agent graph, event flows, contracts, and runtime state are all consistent and aligned. This is an ADVANCED MODE diagnostic tool that performs deep analysis across all GraphBus components to identify mismatches, inconsistencies, and potential issues. Uses NetworkX graph analysis to verify dependency DAG matches event flow graph, checks that contracts match actual code, validates state schemas match agent definitions, detects drift between development and production, and generates comprehensive coherence reports. Essential for complex systems where configuration drift can cause subtle bugs.",
+      "detailed_usage": "Use this command to verify overall system consistency and detect configuration drift. Coherence checking performs cross-cutting analysis that other tools don't: it looks at relationships between artifacts, contracts, code, and runtime state to find mismatches. The coherence subcommands provide multi-layered validation: (1) 'graphbus coherence check' performs full coherence analysis checking dependency consistency, event flow validity, contract alignment, state schema matches, and reports violations with severity levels, (2) 'graphbus coherence report' generates detailed report with all findings categorized by severity (CRITICAL/WARNING/INFO), (3) 'graphbus coherence drift' compares current system against baseline (e.g., production vs development) to identify differences, (4) 'graphbus coherence visualize' creates NetworkX-based graph visualizations showing inconsistencies highlighted. Use this when investigating mysterious bugs ('events not delivered despite correct subscriptions'), before production deployments ('verify everything is aligned'), after major refactoring ('check for unintended side effects'), and periodically in production ('detect drift over time').",
+      "phase": "ADVANCED",
+      "networkx_usage": "Compares dependency DAG against event flow graph to find inconsistencies - e.g., agent depends on B but B doesn't publish required events",
+      "coherence_checks": [
+        "Dependency graph matches actual agent dependencies",
+        "Event flow graph matches publish/subscribe declarations",
+        "Agent contracts match actual method signatures",
+        "State schemas match agent state structures",
+        "Runtime configuration matches build artifacts",
+        "No orphaned topics (published but no subscribers)",
+        "No missing publishers (subscribed but no publisher)",
+        "Cross-graph consistency (dependencies align with event flows)"
+      ],
+      "subcommands": {
+        "check": "Run full coherence analysis and report violations",
+        "report": "Generate detailed coherence report",
+        "drift": "Compare system against baseline (detect changes)",
+        "visualize": "Create graph visualization showing inconsistencies"
+      },
+      "when_to_use": [
+        "Investigating mysterious bugs that shouldn't exist",
+        "User asks: 'why isn't this working', 'validate my system', 'check consistency'",
+        "Before production deployment: 'verify everything is aligned'",
+        "After major refactoring: 'ensure I didn't break anything'",
+        "Periodic health checks in production",
+        "After merging multiple feature branches"
+      ],
+      "when_not_to_use": [
+        "Simple systems (coherence checking is for complex systems)",
+        "Known specific issue (use targeted tools like validate/inspect)",
+        "Build failures (fix build first)",
+        "Prototype phase (too early for coherence checks)"
+      ],
+      "typical_workflow_position": "Advanced validation (for complex, mature systems)",
+      "follows_commands": ["graphbus_build", "graphbus_contract"],
+      "parallel_commands": ["graphbus_validate", "graphbus_doctor"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subcommand": {
+            "type": "string",
+            "enum": ["check", "report", "drift", "visualize"],
+            "description": "Coherence subcommand"
+          },
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts",
+            "default": "."
+          },
+          "baseline": {
+            "type": "string",
+            "description": "Baseline artifacts directory for drift comparison"
+          },
+          "output": {
+            "type": "string",
+            "description": "Output file for report or visualization"
+          }
+        },
+        "required": ["subcommand"]
+      }
+    },
+    {
+      "name": "graphbus_list_templates",
+      "description": "List all available project templates for graphbus_init - shows template names, descriptions, complexity levels, included agents, and recommended use cases. This is a UTILITY command that helps users choose the right template when starting a new project. Displays comprehensive information about each template including what patterns it demonstrates, how many agents it includes, estimated time to understand, and when to use it. Useful for users who are new to GraphBus and want to explore available starting points, or experienced users looking for specific pattern examples.",
+      "detailed_usage": "Use this command when a user asks 'what templates are available', 'show me project templates', or 'what's the difference between templates'. This provides detailed comparison of all graphbus_init templates with metadata to help users make informed choices. Each template listing includes: name (basic, microservices, etl, chatbot, workflow), short description (one-sentence summary), complexity level (beginner/intermediate/advanced), number of agents, estimated learning time, design patterns demonstrated, architectural style, and when to use this template. For example, 'basic' template shows 3 agents demonstrating pub/sub fundamentals for beginners (5 minutes), while 'microservices' template shows 5 agents demonstrating production API gateway pattern for intermediate users (20 minutes). Use this before graphbus_init to help users select the template that matches their learning goals, project requirements, or architectural preferences.",
+      "phase": "PROJECT_INIT",
+      "when_to_use": [
+        "User asks: 'what templates exist', 'show available templates', 'list templates'",
+        "Before graphbus_init: helping user choose template",
+        "User is new: 'what should I start with'",
+        "Comparing templates: 'what's the difference between basic and microservices'",
+        "Exploring patterns: 'what examples demonstrate X pattern'"
+      ],
+      "when_not_to_use": [
+        "User already knows which template they want",
+        "After project is created (templates are for new projects)",
+        "Looking for running examples (use graphbus_load_example instead)"
+      ],
+      "typical_workflow_position": "Step -1 (before graphbus_init when choosing template)",
+      "precedes_commands": ["graphbus_init"],
+      "parallel_commands": ["graphbus_load_example"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "verbose": {
+            "type": "boolean",
+            "description": "Show detailed information for each template",
+            "default": false
+          }
+        }
+      }
+    }
+  ],
+  "command_sequencing_patterns": {
+    "new_project_from_template": [
+      "graphbus_init",
+      "graphbus_build",
+      "graphbus_inspect",
+      "graphbus_run",
+      "graphbus_publish or graphbus_call",
+      "graphbus_stats"
+    ],
+    "load_and_explore_example": [
+      "graphbus_load_example",
+      "graphbus_build",
+      "graphbus_inspect",
+      "graphbus_run",
+      "graphbus_publish",
+      "graphbus_stats"
+    ],
+    "add_agent_to_existing": [
+      "graphbus_generate",
+      "graphbus_validate",
+      "graphbus_build",
+      "graphbus_inspect",
+      "graphbus_run"
+    ],
+    "troubleshooting": [
+      "graphbus_doctor",
+      "graphbus_validate",
+      "graphbus_build",
+      "graphbus_run"
+    ],
+    "modify_and_rebuild": [
+      "graphbus_build",
+      "graphbus_inspect",
+      "graphbus_run"
+    ]
+  }
+}

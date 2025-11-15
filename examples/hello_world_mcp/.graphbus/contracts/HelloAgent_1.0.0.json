@@ -1,0 +1,58 @@
+{
+  "agent_name": "HelloAgent",
+  "version": "1.0.0",
+  "methods": {
+    "get_stats": {
+      "input": {},
+      "output": {
+        "total_greetings": {
+          "type": "<class 'int'>",
+          "required": true,
+          "default": null
+        },
+        "agent_name": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        },
+        "status": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "description": "Get statistics about this agent's activity.\n\nReturns:\n    dict: Agent statistics"
+    },
+    "say_hello": {
+      "input": {
+        "name": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "output": {
+        "message": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        },
+        "greeting_number": {
+          "type": "<class 'int'>",
+          "required": true,
+          "default": null
+        },
+        "greeted": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "description": "Say hello to someone.\n\nArgs:\n    name: The name to greet (default: \"World\")\n\nReturns:\n    dict: A greeting message with metadata"
+    }
+  },
+  "publishes": {},
+  "subscribes": [],
+  "description": "Auto-generated contract for HelloAgent",
+  "timestamp": "2025-11-15T15:53:38.796838"
+}

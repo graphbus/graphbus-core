@@ -42,15 +42,20 @@ def cli(ctx):
 
     \b
     Advanced Features:
-      state     - Manage agent state persistence
-      --debug   - Enable interactive debugger (use with run)
-      --watch   - Enable hot reload (use with run)
+      state                - Manage agent state persistence
+      negotiate            - Run LLM agent negotiation (EXPERIMENTAL)
+      inspect-negotiation  - View negotiation history (EXPERIMENTAL)
+      --debug              - Enable interactive debugger (use with run)
+      --watch              - Enable hot reload (use with run)
 
     \b
     Examples:
       graphbus init my-project              # Create new project
       graphbus generate agent OrderProcessor  # Generate agent code
       graphbus build agents/                # Build agents from directory
+      graphbus build agents/ --enable-agents  # Build with agent orchestration
+      graphbus negotiate .graphbus          # Run post-build negotiation
+      graphbus inspect-negotiation .graphbus  # View negotiation history
       graphbus run .graphbus --debug        # Run with debugger
       graphbus profile .graphbus            # Profile performance
       graphbus dashboard .graphbus          # Launch dashboard
@@ -66,8 +71,10 @@ def cli(ctx):
 from graphbus_cli.commands.build import build
 from graphbus_cli.commands.run import run
 from graphbus_cli.commands.inspect import inspect
+from graphbus_cli.commands.inspect_negotiation import inspect_negotiation
 from graphbus_cli.commands.validate import validate
 from graphbus_cli.commands.state import state
+from graphbus_cli.commands.negotiate import negotiate
 from graphbus_cli.commands.init import init, list_templates_cmd
 from graphbus_cli.commands.generate import generate
 from graphbus_cli.commands.profile import profile
@@ -82,8 +89,10 @@ from graphbus_cli.commands.coherence import coherence
 cli.add_command(build)
 cli.add_command(run)
 cli.add_command(inspect)
+cli.add_command(inspect_negotiation)
 cli.add_command(validate)
 cli.add_command(state)
+cli.add_command(negotiate)
 cli.add_command(init)
 cli.add_command(list_templates_cmd)
 cli.add_command(generate)

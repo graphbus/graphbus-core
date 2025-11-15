@@ -69,6 +69,9 @@ def inspect(artifacts_dir: str, graph: bool, agents: bool, topics: bool,
       graphbus inspect .graphbus --format json   # JSON output
 
     \b
+    Use 'graphbus inspect-negotiation' to view negotiation history.
+
+    \b
     Output Formats:
       table    - Pretty tables (default)
       json     - JSON format
@@ -383,3 +386,5 @@ def _display_agent_details(loader, agent_name, format):
         prompt_text = agent.system_prompt.get('text', '') if isinstance(agent.system_prompt, dict) else str(agent.system_prompt)
         if prompt_text:
             console.print(Panel(prompt_text, border_style="dim"))
+
+
