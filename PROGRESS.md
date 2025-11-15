@@ -386,6 +386,7 @@ graphbus validate agents/ --check-types  # Type checking
 - ✅ **chatbot**: ChatOrchestrator + specialized agents
 - ✅ **workflow**: Approval flow with notifications
 - ✅ Each template includes README, requirements.txt, working agents
+- ✅ 49/49 CLI unit tests passing (100%)
 
 #### 2. Agent Scaffolding (`graphbus_cli/commands/generate.py`)
 - ✅ **generate agent command**: Create agent boilerplate from specs
@@ -395,6 +396,7 @@ graphbus validate agents/ --check-types  # Type checking
 - ✅ Publishing helpers
 - ✅ **Unit test generation**: Automatic pytest test file creation
 - ✅ Docstring templates with TODO markers
+- ✅ 49/49 CLI unit tests passing (100%)
 
 #### 3. Interactive Debugger (`graphbus_core/runtime/debugger.py`)
 - ✅ **InteractiveDebugger**: Step-by-step agent debugging
@@ -404,7 +406,10 @@ graphbus validate agents/ --check-types  # Type checking
 - ✅ Step-through event processing
 - ✅ REPL commands: break, continue, step, inspect, trace, clear
 - ✅ Thread-safe execution pausing
+- ✅ Auto-continue pattern for testing interactive features
 - ✅ 29/29 unit tests passing (100%)
+- ✅ 17/17 integration tests passing (100%, refactored with mocks)
+- ✅ 0.97s test execution time (30x+ speedup from refactor)
 
 #### 4. Performance Profiler (`graphbus_core/runtime/profiler.py`)
 - ✅ **PerformanceProfiler**: Identify bottlenecks in agent graphs
@@ -418,6 +423,7 @@ graphbus validate agents/ --check-types  # Type checking
 - ✅ **profile command**: CLI tool for performance analysis
 - ✅ Output formats: Text, JSON, **HTML flame graphs**
 - ✅ 31/31 unit tests passing (100%)
+- ✅ 20/20 integration tests passing (100%)
 
 #### 5. Visualization Dashboard (`graphbus_cli/commands/dashboard.py`)
 - ✅ **dashboard command**: Web-based runtime visualization
@@ -431,12 +437,13 @@ graphbus validate agents/ --check-types  # Type checking
 - ✅ Dark theme UI with responsive layout
 - ✅ Auto-opens browser on startup
 
-**Test Coverage Phase 2**: 136 tests total
-- ✅ Debugger tests: 29 passing (100%)
-- ✅ Profiler tests: 31 passing (100%)
-- ✅ CLI command tests: 27 passing (100%)
-- ✅ REPL debugger tests: 25 passing (100%)
-- ✅ Integration tests: 24 passing (100%)
+**Test Coverage Phase 2**: 173 tests total
+- ✅ Debugger unit tests: 29 passing (100%)
+- ✅ Debugger integration tests: 17 passing (100%, refactored with mocks)
+- ✅ Profiler unit tests: 31 passing (100%)
+- ✅ Profiler integration tests: 20 passing (100%)
+- ✅ CLI command tests: 49 passing (100%)
+- ✅ REPL command tests: 27 passing (100%)
 
 ### Commands Added
 
@@ -693,33 +700,126 @@ graphbus coherence visualize [--output <file>]  # networkx graph with matplotlib
 
 ---
 
-## Phase 5: Security & Governance (FUTURE)
+## Tranche 5: Developer Experience & Platform Adoption (PLANNING)
 
-### Security Features
+**Focus**: Making GraphBus easy to adopt, understand, and use from a developer perspective. MVP is MCP (Model Context Protocol) integration with Claude Code.
 
-#### 5.1 Agent Authentication & Authorization
-- [ ] Agent identity verification
-- [ ] Permission-based method access
-- [ ] Topic-level publish/subscribe permissions
-- [ ] Role-based access control (RBAC)
+**Key Goals**:
+- Understand what GraphBus does through natural conversation with Claude
+- Try it with zero setup (just talk to Claude)
+- Build first agent in 5 minutes via Claude
+- Deploy to production with Claude's help
 
-#### 5.2 Message Encryption
+### Phase 1: Interactive Demos & Getting Started
+
+#### 1.1 MCP Server for Claude Code (MVP - Week 1-2)
+**Zero-install demo via natural language**
+- [ ] MCP server package (`graphbus-mcp`)
+- [ ] All 23 CLI commands exposed as MCP tools:
+  - Core: build, run, inspect, validate
+  - Project: init, generate, quickstart, load_example
+  - Debug: profile, dashboard, doctor
+  - Deploy: docker, k8s, ci
+  - Advanced: contract, migrate, coherence, state, call, publish, stats
+  - Utility: list_templates, version
+- [ ] Session management for runtime instances
+- [ ] Rich formatted output optimized for Claude
+- [ ] 10+ pre-built examples loadable via `graphbus_load_example`
+- [ ] Auto-configuration script for Claude Code
+- [ ] Published to PyPI as `graphbus-mcp`
+- [ ] Published to Claude MCP registry
+- [ ] Documentation and video demo (5 min)
+
+**User Experience**:
+```
+User: "Build an order processing system"
+Claude: [Uses graphbus_init, graphbus_build, graphbus_run]
+        "Done! Here's your 3-agent system. Want to deploy it?"
+```
+
+**Success Metrics**:
+- Time to first "Hello World" via Claude: <3 minutes
+- User satisfaction with MCP: >4.5/5
+- Completion rate: >85%
+
+#### 1.2 Quick Start Experience (Week 2)
+- [ ] `graphbus quickstart` command with interactive wizard
+- [ ] 8+ project templates with previews
+- [ ] Automatic dependency installation
+- [ ] IDE integration setup (VS Code)
+
+#### 1.3 Video Tutorials (Week 2)
+- [ ] "GraphBus in 3 minutes" (via Claude Code)
+- [ ] "Building Your First Agent" (10 min)
+- [ ] 5+ design pattern videos (5 min each)
+- [ ] Production deployment video (15 min)
+
+### Phase 2: IDE Integration & Developer Tools (Week 3-4)
+- [ ] VS Code extension with IntelliSense and debugging
+- [ ] `graphbus dev` - Development mode with auto-reload
+- [ ] `graphbus doctor` - Health check and diagnostics
+- [ ] `graphbus scaffold` - Interactive agent generator
+- [ ] Enhanced testing framework (`graphbus_testing` package)
+- [ ] Integration with MCP server
+
+### Phase 3: Documentation & Learning Resources (Week 5-6)
+- [ ] Interactive documentation site (docs.graphbus.dev)
+- [ ] 60+ documentation pages with runnable examples
+- [ ] 25+ complete example projects
+- [ ] Community forum (community.graphbus.dev)
+- [ ] GraphBus Academy with 3 learning paths
+- [ ] Blog with tutorials and best practices
+- [ ] Newsletter setup
+
+### Phase 4: Developer Experience Polish (Week 7)
+- [ ] Enhanced error messages with fix suggestions
+- [ ] Improved developer dashboard
+- [ ] Production monitoring dashboard
+- [ ] Version migration tools
+- [ ] Grafana/Prometheus integration templates
+
+### Phase 5: Onboarding & First Impressions (Week 8)
+- [ ] Marketing website at graphbus.dev
+- [ ] Live MCP demo on homepage
+- [ ] Perfect README with GIF demos
+- [ ] First-run wizard
+- [ ] Use case and comparison pages
+
+**Timeline**: 8 weeks
+**Success Metrics**:
+- Time to "Hello World" via Claude: <3 minutes
+- Tutorial completion: >85%
+- Developer satisfaction: >4.5/5
+- MCP user retention: >70%
+
+---
+
+## Tranche 6: Advanced Messaging & Security (FUTURE)
+
+**Focus**: Production-grade messaging, security, and governance features.
+
+### Phase 1: Advanced Message Bus Features
+- [ ] Message filtering & transformation (schema-aware)
+- [ ] Priority queues with version awareness
+- [ ] Dead letter queue with migration retry
+- [ ] Message persistence with version tracking
+
+### Phase 2: Security & Authentication
+- [ ] Agent authentication (JWT, mTLS)
+- [ ] Authorization & RBAC
 - [ ] End-to-end message encryption
-- [ ] TLS for message bus communication
-- [ ] Key management system
-- [ ] Encrypted state persistence
+- [ ] Audit logging (tamper-proof)
 
-#### 5.3 Audit Logging
-- [ ] Comprehensive audit trail
-- [ ] Tamper-proof logging
-- [ ] Query and analysis tools
-- [ ] Compliance reporting
-
-#### 5.4 Policy Enforcement
+### Phase 3: Governance & Policy
 - [ ] Resource quotas per agent
-- [ ] Rate limiting for events
-- [ ] Message size limits
-- [ ] Execution time limits
+- [ ] Declarative policy engine
+- [ ] Compliance policies (GDPR, HIPAA)
+
+### Phase 4: Observability Enhancements
+- [ ] Distributed tracing (OpenTelemetry)
+- [ ] Advanced metrics and SLA tracking
+
+**Timeline**: 6-9 weeks
 
 ---
 
@@ -761,11 +861,17 @@ graphbus coherence visualize [--output <file>]  # networkx graph with matplotlib
 - **Advanced Features**: 14 (State, HotReload, Health, Debugger, Profiler, Dashboard, Templates, Docker, K8s, CI/CD, Monitoring, Contracts, Migrations, Coherence)
 
 ### Next Milestone (Tranche 5)
-- Message filtering & transformation (schema-aware)
-- Priority queues with schema version awareness
-- Dead letter queue with migration retry
-- Message persistence with version tracking
-- Security & governance features
+- **Focus**: Developer Experience & Platform Adoption
+- **MVP**: MCP server for Claude Code (all 23 CLI commands as tools)
+- Zero-setup demos via natural conversation with Claude
+- 10+ pre-built examples loadable through Claude
+- Session management for runtime instances
+- VS Code extension with IntelliSense
+- Interactive documentation with runnable examples
+- 25+ complete example projects
+- Enhanced CLI tools (quickstart, dev, doctor, scaffold)
+- First-run wizard and tutorials
+- Marketing website with MCP demo
 
 ---
 
@@ -793,6 +899,13 @@ graphbus coherence visualize [--output <file>]  # networkx graph with matplotlib
    - No drift between tests and implementation
    - Easier to maintain
 
+5. **MCP-First Developer Experience** (Tranche 5):
+   - Natural language interaction via Claude Code
+   - Zero-setup demos (no web playground needed)
+   - All CLI commands as MCP tools
+   - Learn by doing through conversation
+   - Lower barrier to entry than traditional docs
+
 ### Lessons Learned
 
 - Tests must match actual API, not imagined API
@@ -800,3 +913,6 @@ graphbus coherence visualize [--output <file>]  # networkx graph with matplotlib
 - pytest fixtures with skip conditions work well for example-based tests
 - EventRouter requires nodes dict at initialization for proper handler registration
 - RuntimeExecutor should take RuntimeConfig object, with run_runtime() convenience wrapper
+- **Mock-first integration tests**: Heavy fixtures (full runtime, artifacts, modules) should be replaced with lightweight mocks for 30x+ speedup
+- **Auto-continue pattern for interactive features**: Testing interactive components like debugger requires auto-continue callbacks to prevent blocking
+- **Thread safety in tests**: Always use timeouts on thread joins and proper cleanup to prevent hangs

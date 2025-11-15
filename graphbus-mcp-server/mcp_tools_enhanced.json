@@ -1,0 +1,524 @@
+{
+  "tools": [
+    {
+      "name": "graphbus_build",
+      "description": "Build GraphBus agents from Python source code. This is the FIRST step after writing agent code. Scans agent files, extracts metadata (methods, subscriptions, dependencies), validates the code structure, and generates executable runtime artifacts in .graphbus/ directory. USE THIS: After user writes agents OR when they say 'build my agents' OR before running agents. DO NOT USE: If artifacts already exist and code hasn't changed.",
+      "when_to_use": [
+        "User has written agent Python files and wants to prepare them for execution",
+        "User says 'build', 'compile', 'prepare my agents'",
+        "After generating agents with graphbus_generate or graphbus_init",
+        "Before running agents for the first time",
+        "After modifying agent source code"
+      ],
+      "when_not_to_use": [
+        "Artifacts (.graphbus/) already exist and code hasn't changed",
+        "User just wants to inspect existing artifacts",
+        "User wants to run already-built agents"
+      ],
+      "typical_workflow_position": "Step 2 (after writing/generating agents, before running)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agents_dir": {
+            "type": "string",
+            "description": "Directory containing agent .py files (e.g., 'agents/', './my-project/agents')"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Where to save artifacts (default: .graphbus)",
+            "default": ".graphbus"
+          },
+          "validate": {
+            "type": "boolean",
+            "description": "Run extra validation checks after build",
+            "default": false
+          },
+          "verbose": {
+            "type": "boolean",
+            "description": "Show detailed build output",
+            "default": false
+          }
+        },
+        "required": ["agents_dir"]
+      }
+    },
+    {
+      "name": "graphbus_run",
+      "description": "Start the GraphBus runtime and execute agents. Loads pre-built artifacts (.graphbus/), instantiates all agents, starts the message bus, and begins processing events. This creates a LIVE RUNTIME SESSION that stays active. Returns a session_id for interacting with the running system. USE THIS: After building agents OR when user wants to see agents in action OR to test agent behavior. DO NOT USE: If you need to inspect artifacts without running OR if a runtime session is already active.",
+      "when_to_use": [
+        "User wants to execute their agent system",
+        "User says 'run', 'start', 'execute my agents'",
+        "After building agents and user wants to test them",
+        "User wants to interact with agents (call methods, publish events)",
+        "User wants to see real-time agent behavior"
+      ],
+      "when_not_to_use": [
+        "Just want to see agent structure (use graphbus_inspect instead)",
+        "A runtime session is already active for this artifacts_dir",
+        "Artifacts haven't been built yet (run graphbus_build first)"
+      ],
+      "typical_workflow_position": "Step 3 (after building, when ready to execute)",
+      "creates_persistent_session": true,
+      "session_lifecycle": "Runtime stays active until explicitly stopped or session ends. Use session_id with graphbus_call, graphbus_publish, graphbus_stats to interact with running agents.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts from build"
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "Start in REPL mode for manual interaction (usually false for programmatic use)",
+            "default": false
+          },
+          "no_message_bus": {
+            "type": "boolean",
+            "description": "Disable event-driven messaging (only for testing isolated agents)",
+            "default": false
+          },
+          "enable_state_persistence": {
+            "type": "boolean",
+            "description": "Save agent state to disk (survives restarts)",
+            "default": false
+          },
+          "enable_hot_reload": {
+            "type": "boolean",
+            "description": "Allow reloading agent code without full restart",
+            "default": false
+          },
+          "enable_health_monitoring": {
+            "type": "boolean",
+            "description": "Track agent health and auto-restart on failures",
+            "default": false
+          },
+          "debug": {
+            "type": "boolean",
+            "description": "Enable interactive debugger with breakpoints",
+            "default": false
+          },
+          "verbose": {
+            "type": "boolean",
+            "description": "Show detailed runtime logs",
+            "default": false
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_inspect",
+      "description": "Examine GraphBus artifacts WITHOUT running the system. Shows agent structure, dependencies, topics, subscriptions, and graph topology. This is READ-ONLY inspection - no agents are started. USE THIS: To understand agent relationships OR troubleshoot configuration OR show user their system structure OR before running to preview what will happen. DO NOT USE: If runtime is already running (use graphbus_stats instead) OR if artifacts don't exist yet.",
+      "when_to_use": [
+        "User wants to see what agents exist and how they're connected",
+        "User asks 'show me the agent graph', 'what topics exist', 'which agents subscribe to X'",
+        "Debugging: 'why isn't my agent receiving events'",
+        "Before running: 'what will happen when I run this'",
+        "Understanding structure: 'explain my agent system'",
+        "After building: verify build results"
+      ],
+      "when_not_to_use": [
+        "Artifacts don't exist (run graphbus_build first)",
+        "Want runtime statistics (use graphbus_stats instead)",
+        "Want to modify configuration (use graphbus_generate or edit source)"
+      ],
+      "typical_workflow_position": "Any time after build, especially before first run or when debugging",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "artifacts_dir": {
+            "type": "string",
+            "description": "Directory containing .graphbus/ artifacts"
+          },
+          "show_graph": {
+            "type": "boolean",
+            "description": "Display agent dependency graph with activation order",
+            "default": false
+          },
+          "show_agents": {
+            "type": "boolean",
+            "description": "List all agents with methods and subscriptions",
+            "default": false
+          },
+          "show_topics": {
+            "type": "boolean",
+            "description": "List all message topics and their publishers/subscribers",
+            "default": false
+          },
+          "show_subscriptions": {
+            "type": "boolean",
+            "description": "Show topic → agent subscription mappings",
+            "default": false
+          },
+          "agent": {
+            "type": "string",
+            "description": "Deep dive into specific agent (methods, dependencies, state)"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["json", "yaml", "table"],
+            "description": "Output format (table is most readable for humans)",
+            "default": "table"
+          }
+        },
+        "required": ["artifacts_dir"]
+      }
+    },
+    {
+      "name": "graphbus_validate",
+      "description": "Check agent source code for common issues BEFORE building. Validates decorator usage, detects missing methods, finds circular dependencies, checks type annotations, and identifies potential runtime problems. This is a LINTER/VALIDATOR, not a builder. USE THIS: Before building OR when user reports errors OR to ensure code quality. DO NOT USE: After successful build (build validates automatically).",
+      "when_to_use": [
+        "User is getting build errors and needs help understanding why",
+        "Before building: 'check if my agents are correct'",
+        "User asks: 'validate my code', 'check for errors'",
+        "After user writes agents but before building",
+        "When teaching: show user what needs to be fixed"
+      ],
+      "when_not_to_use": [
+        "Agents already built successfully",
+        "Want to check runtime behavior (use graphbus_run instead)",
+        "Want detailed inspection (use graphbus_inspect after building)"
+      ],
+      "typical_workflow_position": "Step 1.5 (optional, between writing code and building)",
+      "helps_prevent": ["Build failures", "Runtime errors", "Circular dependencies", "Missing decorators"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agents_dir": {
+            "type": "string",
+            "description": "Directory containing agent .py files to validate"
+          },
+          "strict": {
+            "type": "boolean",
+            "description": "Enable strict validation mode (fails on warnings)",
+            "default": false
+          },
+          "check_types": {
+            "type": "boolean",
+            "description": "Validate type annotations match schema definitions",
+            "default": false
+          },
+          "check_cycles": {
+            "type": "boolean",
+            "description": "Detect circular dependencies between agents",
+            "default": false
+          }
+        },
+        "required": ["agents_dir"]
+      }
+    },
+    {
+      "name": "graphbus_init",
+      "description": "Bootstrap a NEW GraphBus project from professional templates. Creates complete project structure with working agents, tests, README, and deployment configs. This is for STARTING NEW PROJECTS from scratch. USE THIS: When user wants to create a new project OR explore example architectures OR learn patterns. DO NOT USE: If project already exists OR user wants to add single agent to existing project (use graphbus_generate instead).",
+      "when_to_use": [
+        "User says: 'create new project', 'start fresh', 'I want to build X system'",
+        "Teaching: 'let me show you a working example'",
+        "User is brand new and needs a starting point",
+        "User wants to see a specific pattern (microservices, ETL, etc.)",
+        "Beginning of conversation about building new system"
+      ],
+      "when_not_to_use": [
+        "Project directory already exists (causes error unless --force)",
+        "User wants to add to existing project (use graphbus_generate)",
+        "User just wants to see examples (use graphbus_load_example)"
+      ],
+      "typical_workflow_position": "Step 0 (very first step when starting new project)",
+      "templates": {
+        "basic": "Simple 3-agent hello world (best for learning)",
+        "microservices": "API Gateway + services pattern (production-style)",
+        "etl": "Extract-Transform-Load data pipeline",
+        "chatbot": "Conversational agent with context and memory",
+        "workflow": "Multi-step approval workflow with notifications"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_name": {
+            "type": "string",
+            "description": "Name for the new project directory (will be created)"
+          },
+          "template": {
+            "type": "string",
+            "enum": ["basic", "microservices", "etl", "chatbot", "workflow"],
+            "description": "Project template: basic=simple learning, microservices=production pattern, etl=data pipeline, chatbot=conversational AI, workflow=multi-step approvals",
+            "default": "basic"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Parent directory (project created as subdirectory)",
+            "default": "."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Overwrite existing directory (destructive!)",
+            "default": false
+          }
+        },
+        "required": ["project_name"]
+      }
+    },
+    {
+      "name": "graphbus_generate",
+      "description": "Generate a single agent's boilerplate code in existing project. Creates agent class with decorators, method stubs, subscription handlers, docstrings, and tests. This is for ADDING NEW AGENTS to existing projects. USE THIS: When user describes a new agent they want to create OR needs to add functionality to existing project. DO NOT USE: For creating whole projects (use graphbus_init) OR if agent file already exists.",
+      "when_to_use": [
+        "User describes new agent: 'I need an agent that processes payments'",
+        "Adding to existing project: 'add a notification service'",
+        "User asks: 'create an agent', 'generate agent code'",
+        "After discussing requirements: 'let me generate that for you'",
+        "Expanding existing system with new capabilities"
+      ],
+      "when_not_to_use": [
+        "Starting new project (use graphbus_init)",
+        "Agent file already exists (will fail)",
+        "User wants to modify existing agent (edit manually or use IDE)"
+      ],
+      "typical_workflow_position": "Step 1 or Step N (creating first agent or adding more agents)",
+      "generates": ["Agent class file", "Unit test file", "Method stubs", "Docstring templates"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "enum": ["agent"],
+            "description": "Type of entity (currently only 'agent' supported)",
+            "default": "agent"
+          },
+          "name": {
+            "type": "string",
+            "description": "Agent name in PascalCase (e.g., OrderProcessor, PaymentService)"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Directory to create agent file (default: agents/)",
+            "default": "agents"
+          },
+          "methods": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of method names to generate (e.g., ['process_order', 'validate_payment'])"
+          },
+          "subscribes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Topics this agent listens to (e.g., ['/order/created', '/payment/authorized'])"
+          },
+          "publishes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Topics this agent publishes (e.g., ['/order/processed', '/payment/completed'])"
+          },
+          "with_llm": {
+            "type": "boolean",
+            "description": "Add LLM client integration for AI-powered agents",
+            "default": false
+          },
+          "with_state": {
+            "type": "boolean",
+            "description": "Add state management methods (get_state/set_state)",
+            "default": false
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "graphbus_load_example",
+      "description": "Load a complete, working example project instantly. Copies pre-built example with agents, tests, and docs to a directory. Perfect for learning, demonstrations, or starting points. USE THIS: To show user working examples OR when teaching concepts OR when user wants to try something quickly. DO NOT USE: When user wants custom project (use graphbus_init with templates).",
+      "when_to_use": [
+        "User asks: 'show me an example', 'how does X work in GraphBus'",
+        "Teaching: 'let me demonstrate event-driven communication'",
+        "User wants to experiment: 'I want to try GraphBus quickly'",
+        "Exploring patterns: 'show me saga pattern', 'how to do CQRS'",
+        "Start of conversation: giving user something to interact with immediately"
+      ],
+      "when_not_to_use": [
+        "User wants custom project name or structure (use graphbus_init)",
+        "User wants to build from scratch for learning",
+        "Example directory already exists"
+      ],
+      "typical_workflow_position": "Step 0 (very first, for immediate hands-on experience)",
+      "examples": {
+        "hello-world": "3 agents, event pub/sub, 5 min to understand",
+        "order-processing": "Order → Payment → Shipment flow, 15 min",
+        "chatbot": "Conversational agent with context, 10 min",
+        "data-pipeline": "ETL with validation and transformation, 15 min",
+        "api-gateway": "REST gateway + microservices, 20 min",
+        "event-sourcing": "Event store and replay, 20 min",
+        "saga-pattern": "Distributed transaction coordination, 25 min",
+        "circuit-breaker": "Fault tolerance pattern, 15 min"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "example": {
+            "type": "string",
+            "enum": [
+              "hello-world",
+              "order-processing",
+              "chatbot",
+              "data-pipeline",
+              "api-gateway",
+              "event-sourcing",
+              "saga-pattern",
+              "circuit-breaker"
+            ],
+            "description": "Example to load (hello-world recommended for beginners)"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Where to create example directory",
+            "default": "."
+          }
+        },
+        "required": ["example"]
+      }
+    },
+    {
+      "name": "graphbus_call",
+      "description": "Call an agent method in a RUNNING runtime session. Directly invokes agent method with arguments and returns result. This requires an active runtime session from graphbus_run. USE THIS: To test agent methods OR when user wants to trigger agent behavior OR to see method outputs. DO NOT USE: If runtime isn't running (start with graphbus_run first).",
+      "when_to_use": [
+        "User wants to test agent method: 'call the process_order method'",
+        "Testing behavior: 'try calling this with these arguments'",
+        "Demonstrating: 'let me show you what this agent does'",
+        "Debugging: 'test if this method works correctly'",
+        "After runtime started with graphbus_run"
+      ],
+      "when_not_to_use": [
+        "Runtime not started (run graphbus_run first)",
+        "Want to see method definition (use graphbus_inspect instead)",
+        "Want event-driven flow (use graphbus_publish instead)"
+      ],
+      "typical_workflow_position": "Step 4+ (after running runtime, during testing/interaction)",
+      "requires_active_session": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Runtime session ID from graphbus_run (required)"
+          },
+          "agent": {
+            "type": "string",
+            "description": "Agent name (e.g., 'OrderService')"
+          },
+          "method": {
+            "type": "string",
+            "description": "Method name to call (e.g., 'process_order')"
+          },
+          "args": {
+            "type": "object",
+            "description": "Method arguments as JSON object (e.g., {\"order_id\": \"123\"})"
+          }
+        },
+        "required": ["session_id", "agent", "method"]
+      }
+    },
+    {
+      "name": "graphbus_publish",
+      "description": "Publish an event to a RUNNING runtime's message bus. Triggers event-driven flow where subscribed agents receive and process the event. This is how agents communicate asynchronously. USE THIS: To trigger event-driven workflows OR test pub/sub behavior OR demonstrate agent communication. DO NOT USE: If runtime not running OR for direct method calls (use graphbus_call).",
+      "when_to_use": [
+        "User wants to trigger workflow: 'publish an order created event'",
+        "Testing pub/sub: 'see what happens when I publish this'",
+        "Demonstrating: 'watch how agents react to events'",
+        "Event-driven testing: 'trigger the payment flow'",
+        "After runtime started with graphbus_run"
+      ],
+      "when_not_to_use": [
+        "Runtime not started (run graphbus_run first)",
+        "Want direct method invocation (use graphbus_call)",
+        "Just want to see subscriptions (use graphbus_inspect)"
+      ],
+      "typical_workflow_position": "Step 4+ (after running runtime, during event testing)",
+      "requires_active_session": true,
+      "triggers": "All agents subscribed to the topic will receive and process this event",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Runtime session ID from graphbus_run (required)"
+          },
+          "topic": {
+            "type": "string",
+            "description": "Topic to publish to (e.g., '/order/created')"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Event data as JSON object (e.g., {\"order_id\": \"123\", \"amount\": 99.99})"
+          }
+        },
+        "required": ["session_id", "topic", "payload"]
+      }
+    },
+    {
+      "name": "graphbus_stats",
+      "description": "Get real-time statistics from a RUNNING runtime. Shows agent status, message counts, event history, performance metrics, and health. USE THIS: To monitor running system OR troubleshoot performance OR show user activity OR understand what's happening. DO NOT USE: If runtime not running OR want static artifact info (use graphbus_inspect).",
+      "when_to_use": [
+        "User asks: 'show me runtime stats', 'what's happening', 'is it working'",
+        "Monitoring: 'how many messages processed'",
+        "Debugging: 'why is agent slow', 'are events being delivered'",
+        "After publishing events: 'did that work'",
+        "Periodically checking health during long runs"
+      ],
+      "when_not_to_use": [
+        "Runtime not started",
+        "Want agent structure info (use graphbus_inspect)",
+        "Want detailed profiling (use graphbus_profile)"
+      ],
+      "typical_workflow_position": "Step 4+ (during or after runtime operation)",
+      "requires_active_session": true,
+      "shows": ["Agent status", "Message counts", "Event history", "Performance metrics", "Error rates"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Runtime session ID from graphbus_run (required)"
+          }
+        },
+        "required": ["session_id"]
+      }
+    },
+    {
+      "name": "graphbus_doctor",
+      "description": "Run comprehensive health check on GraphBus installation and project. Validates Python version, dependencies, agent syntax, configuration, and common issues. Provides actionable recommendations. USE THIS: When user has errors OR installation issues OR 'not working' problems OR for preventive checks. DO NOT USE: For runtime monitoring (use graphbus_stats).",
+      "when_to_use": [
+        "User reports: 'it's not working', 'getting errors', 'installation failed'",
+        "Preventive: 'check if everything is set up correctly'",
+        "After new installation: 'verify GraphBus is ready'",
+        "Before important operations: 'make sure my project is healthy'",
+        "Troubleshooting: 'diagnose issues'"
+      ],
+      "when_not_to_use": [
+        "Runtime monitoring (use graphbus_stats)",
+        "Specific code validation (use graphbus_validate)",
+        "Build errors (run graphbus_build with verbose)"
+      ],
+      "typical_workflow_position": "Step 0 (when problems occur) or preventive checks",
+      "checks": [
+        "Python version >= 3.9",
+        "GraphBus packages installed",
+        "Dependencies present",
+        "Agent files valid",
+        "No circular dependencies",
+        "Configuration correct",
+        "Deprecated API usage"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_dir": {
+            "type": "string",
+            "description": "Project directory to check (default: current directory)",
+            "default": "."
+          },
+          "fix": {
+            "type": "boolean",
+            "description": "Attempt automatic fixes for found issues",
+            "default": false
+          }
+        }
+      }
+    }
+  ]
+}
