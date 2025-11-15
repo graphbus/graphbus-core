@@ -1,0 +1,18 @@
+"""
+LoggerService - Logs events
+"""
+
+from graphbus_core import GraphBusNode, subscribe
+
+
+class LoggerService(GraphBusNode):
+    SYSTEM_PROMPT = """
+    You log events when greetings are generated.
+    In Build Mode, you can negotiate with other services about
+    what information should be logged and in what format.
+    """
+
+    @subscribe("/Hello/MessageGenerated")
+    def on_message_generated(self, event):
+        """Handle message generated events."""
+        print(f"[LOG] Greeting generated: {event.get('message', 'unknown')}")

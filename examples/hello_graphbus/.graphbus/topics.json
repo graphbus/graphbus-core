@@ -1,0 +1,14 @@
+{
+  "topics": [
+    {
+      "name": "/Hello/MessageGenerated"
+    }
+  ],
+  "subscriptions": [
+    {
+      "node_name": "LoggerService",
+      "topic": "/Hello/MessageGenerated",
+      "handler_name": "on_message_generated"
+    }
+  ]
+}
