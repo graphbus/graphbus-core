@@ -203,5 +203,33 @@ class GraphBusNode:
         """Get declared agent capabilities via @agent_capability."""
         return getattr(cls, '_graphbus_capabilities', [])
 
+    # -------------------------------------------------------------------------
+    # State Persistence (optional, for agents that need state)
+    # -------------------------------------------------------------------------
+
+    def get_state(self) -> dict:
+        """
+        Get agent state for persistence.
+
+        Override this method in subclasses to provide custom state.
+        Default implementation returns empty dict.
+
+        Returns:
+            Dictionary containing agent state
+        """
+        return {}
+
+    def set_state(self, state: dict) -> None:
+        """
+        Restore agent state from persistence.
+
+        Override this method in subclasses to restore custom state.
+        Default implementation does nothing.
+
+        Args:
+            state: Dictionary containing agent state
+        """
+        pass
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} mode={self._mode}>"

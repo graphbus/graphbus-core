@@ -14,6 +14,9 @@ from graphbus_core.node_base import GraphBusNode
 from graphbus_core.runtime.loader import ArtifactLoader
 from graphbus_core.runtime.message_bus import MessageBus
 from graphbus_core.runtime.event_router import EventRouter
+from graphbus_core.runtime.state import StateManager
+from graphbus_core.runtime.hot_reload import HotReloadManager
+from graphbus_core.runtime.health import HealthMonitor
 
 
 class RuntimeExecutor:
@@ -40,10 +43,26 @@ class RuntimeExecutor:
         self.loader: Optional[ArtifactLoader] = None
         self.graph: Optional[AgentGraph] = None
         self.agent_definitions: List[AgentDefinition] = []
+        self.agents: List[AgentDefinition] = []  # Alias for compatibility
         self.nodes: Dict[str, GraphBusNode] = {}
         self.bus: Optional[MessageBus] = None
         self.router: Optional[EventRouter] = None
         self._is_running = False
+
+        # Advanced features
+        self.state_manager: Optional[StateManager] = None
+        self.hot_reload_manager: Optional[HotReloadManager] = None
+        self.health_monitor: Optional[HealthMonitor] = None
+
+    @property
+    def message_bus(self):
+        """Alias for bus property."""
+        return self.bus
+
+    @property
+    def event_router(self):
+        """Alias for router property."""
+        return self.router
 
     def load_artifacts(self) -> None:
         """Load build artifacts from configured directory."""
@@ -60,6 +79,9 @@ class RuntimeExecutor:
 
         # Load all artifacts
         self.graph, self.agent_definitions, topics, subscriptions = self.loader.load_all()
+
+        # Also set agents alias for compatibility
+        self.agents = self.agent_definitions
 
         print(f"[RuntimeExecutor] Loaded {len(self.agent_definitions)} agents, "
               f"{len(topics)} topics, {len(subscriptions)} subscriptions")
@@ -129,11 +151,18 @@ class RuntimeExecutor:
 
         print(f"[RuntimeExecutor] Message bus ready with {len(subscriptions)} subscriptions")
 
-    def start(self) -> None:
+    def start(self, enable_state_persistence: bool = False,
+              enable_hot_reload: bool = False,
+              enable_health_monitoring: bool = False) -> None:
         """
         Start the runtime executor.
 
         Loads artifacts, initializes nodes, and sets up message bus.
+
+        Args:
+            enable_state_persistence: Enable agent state persistence
+            enable_hot_reload: Enable hot reload capability
+            enable_health_monitoring: Enable health monitoring
         """
         if self._is_running:
             print("[RuntimeExecutor] Already running")
@@ -152,10 +181,26 @@ class RuntimeExecutor:
         # Setup message bus
         self.setup_message_bus()
 
+        # Setup advanced features
+        if enable_state_persistence:
+            self.setup_state_management()
+
+        if enable_hot_reload:
+            self.setup_hot_reload()
+
+        if enable_health_monitoring:
+            self.setup_health_monitoring()
+
         self._is_running = True
 
         print("=" * 60)
         print(f"RUNTIME READY - {len(self.nodes)} nodes active")
+        if self.state_manager:
+            print("  State Persistence: ENABLED")
+        if self.hot_reload_manager:
+            print("  Hot Reload: ENABLED")
+        if self.health_monitor:
+            print("  Health Monitoring: ENABLED")
         print("=" * 60)
         print()
 
@@ -286,6 +331,114 @@ class RuntimeExecutor:
             }
 
         return stats
+
+    def setup_state_management(self, state_dir: str = ".graphbus/state") -> None:
+        """
+        Setup state management for agents.
+
+        Args:
+            state_dir: Directory to store state files
+        """
+        print("[RuntimeExecutor] Setting up state management...")
+        self.state_manager = StateManager(state_dir)
+
+        # Load saved states for all nodes
+        saved_states = self.state_manager.list_saved_states()
+        for node_name in saved_states:
+            if node_name in self.nodes:
+                node = self.nodes[node_name]
+                if hasattr(node, 'set_state'):
+                    try:
+                        state = self.state_manager.load_state(node_name)
+                        node.set_state(state)
+                        print(f"[RuntimeExecutor]   ✓ Restored state for {node_name}")
+                    except Exception as e:
+                        print(f"[RuntimeExecutor]   ⚠ Failed to restore state for {node_name}: {e}")
+
+        print(f"[RuntimeExecutor] State management ready")
+
+    def setup_hot_reload(self) -> None:
+        """Setup hot reload manager."""
+        print("[RuntimeExecutor] Setting up hot reload...")
+        self.hot_reload_manager = HotReloadManager(self)
+        print("[RuntimeExecutor] Hot reload ready")
+
+    def setup_health_monitoring(self, enable_auto_restart: bool = False) -> None:
+        """
+        Setup health monitoring for agents.
+
+        Args:
+            enable_auto_restart: Enable automatic restart of failed agents
+        """
+        print("[RuntimeExecutor] Setting up health monitoring...")
+        self.health_monitor = HealthMonitor(
+            self,
+            enable_auto_restart=enable_auto_restart
+        )
+
+        # Wrap call_method to record health metrics
+        original_call_method = self.call_method
+
+        def monitored_call_method(node_name: str, method_name: str, *args, **kwargs):
+            try:
+                result = original_call_method(node_name, method_name, *args, **kwargs)
+                self.health_monitor.record_success(node_name)
+                return result
+            except Exception as e:
+                self.health_monitor.record_failure(node_name, e)
+                raise
+
+        self.call_method = monitored_call_method
+
+        print(f"[RuntimeExecutor] Health monitoring ready (auto-restart: {enable_auto_restart})")
+
+    def save_node_state(self, node_name: str) -> None:
+        """
+        Save state for a specific node.
+
+        Args:
+            node_name: Name of the node to save state for
+
+        Raises:
+            ValueError: If state management is not enabled or node doesn't exist
+        """
+        if not self.state_manager:
+            raise ValueError("State management is not enabled")
+
+        if node_name not in self.nodes:
+            raise ValueError(f"Node '{node_name}' not found")
+
+        node = self.nodes[node_name]
+        if hasattr(node, 'get_state'):
+            state = node.get_state()
+            self.state_manager.save_state(node_name, state)
+        else:
+            raise ValueError(f"Node '{node_name}' does not support state persistence")
+
+    def save_all_states(self) -> int:
+        """
+        Save state for all nodes that support it.
+
+        Returns:
+            Number of states saved
+
+        Raises:
+            ValueError: If state management is not enabled
+        """
+        if not self.state_manager:
+            raise ValueError("State management is not enabled")
+
+        count = 0
+        for node_name, node in self.nodes.items():
+            if hasattr(node, 'get_state'):
+                try:
+                    state = node.get_state()
+                    self.state_manager.save_state(node_name, state)
+                    count += 1
+                except Exception as e:
+                    print(f"Warning: Failed to save state for {node_name}: {e}")
+
+        return count
 
     def __repr__(self) -> str:
         """String representation of runtime executor."""
