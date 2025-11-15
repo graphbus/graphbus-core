@@ -803,56 +803,61 @@ The GraphBus MCP server exposes the entire GraphBus CLI as MCP tools, allowing C
 
 ### Directory Structure
 ```
-graphbus-mcp-server/
-├── src/
-│   └── graphbus_mcp/
-│       ├── __init__.py
-│       ├── server.py              # Main MCP server
-│       ├── tools/                 # Tool implementations
-│       │   ├── __init__.py
-│       │   ├── core.py            # build, run, inspect, validate
-│       │   ├── project.py         # init, generate, quickstart
-│       │   ├── debug.py           # profile, dashboard
-│       │   ├── deploy.py          # docker, k8s, ci
-│       │   ├── state.py           # state management
-│       │   ├── contract.py        # contract, migrate, coherence
-│       │   ├── runtime.py         # call, publish, stats
-│       │   └── utility.py         # doctor, version, templates
-│       ├── session.py             # Session management
-│       ├── formatters.py          # Output formatting
-│       └── examples.py            # Example loader
-├── tests/
-│   ├── test_server.py
-│   ├── test_tools/
-│   │   ├── test_core.py
-│   │   ├── test_project.py
-│   │   └── ...
-│   └── test_session.py
-├── examples/                       # Pre-built examples
-│   ├── hello-world/
-│   ├── order-processing/
-│   ├── chatbot/
-│   ├── data-pipeline/
-│   ├── api-gateway/
-│   ├── event-sourcing/
-│   ├── saga-pattern/
-│   └── circuit-breaker/
-├── docs/
-│   ├── ARCHITECTURE_CONTEXT.md     # Complete arch context for Claude
+graphbus-core/                      # Main GraphBus repository
+├── graphbus_core/                  # Core runtime package
+├── graphbus_cli/                   # CLI commands package
+├── tests/                          # All tests (shared across modules)
+│   ├── runtime/
+│   ├── cli/
+│   └── mcp/                        # MCP server tests
+│       ├── test_server.py
+│       ├── test_tools_core.py
+│       ├── test_tools_project.py
+│       ├── test_tools_runtime.py
+│       └── test_session.py
+├── examples/
+│   └── hello_graphbus/
+├── graphbus-mcp-server/            # MCP server module (this directory)
+│   ├── __init__.py
+│   ├── server.py                   # Main MCP server entry point
+│   ├── tools/                      # Tool implementations
+│   │   ├── __init__.py
+│   │   ├── core.py                 # build, run, inspect, validate
+│   │   ├── project.py              # init, generate, quickstart
+│   │   ├── debug.py                # profile, dashboard
+│   │   ├── deploy.py               # docker, k8s, ci
+│   │   ├── state.py                # state management
+│   │   ├── contract.py             # contract, migrate, coherence
+│   │   ├── runtime.py              # call, publish, stats
+│   │   └── utility.py              # doctor, version, templates
+│   ├── session.py                  # Runtime session management
+│   ├── formatters.py               # Output formatting for Claude
+│   ├── examples/                   # Pre-built GraphBus examples
+│   │   ├── hello-world/
+│   │   ├── order-processing/
+│   │   ├── chatbot/
+│   │   ├── data-pipeline/
+│   │   ├── api-gateway/
+│   │   ├── event-sourcing/
+│   │   ├── saga-pattern/
+│   │   └── circuit-breaker/
+│   ├── ARCHITECTURE_CONTEXT.md     # Complete architectural context
 │   ├── mcp_tools_enhanced.json     # Enhanced tool metadata
-│   └── user-guide.md
-├── scripts/
-│   ├── install_dev.sh
-│   ├── install.sh
-│   ├── publish.sh
-│   └── publish_test.sh
-├── pyproject.toml
-├── README.md
-├── LICENSE
-└── MANIFEST.in
+│   ├── mcp_server_design.md        # This design document
+│   └── README.md                   # MCP server documentation
+├── pyproject.toml                  # Repository-level package config
+├── PROGRESS.md
+├── TRANCHE_5.md
+└── README.md
 ```
 
-**Note**: The design documents (ARCHITECTURE_CONTEXT.md, mcp_tools_enhanced.json, mcp_server_design.md) are currently in the root directory and should be moved to `docs/` when implementing.
+**Implementation Notes**:
+- This is a module within the graphbus-core repository
+- Tests for MCP server go in `tests/mcp/` (parallel to runtime/cli tests)
+- Code is directly in `graphbus-mcp-server/` directory (no src/ wrapper)
+- `examples/` is a subfolder containing pre-built GraphBus projects
+- Design docs and metadata stay in the module root
+- Will be published as `graphbus-mcp` package on PyPI
 
 ### Key Implementation Files
 
