@@ -803,33 +803,56 @@ The GraphBus MCP server exposes the entire GraphBus CLI as MCP tools, allowing C
 
 ### Directory Structure
 ```
-graphbus-mcp/
+graphbus-mcp-server/
 ├── src/
-│   ├── graphbus_mcp/
-│   │   ├── __init__.py
-│   │   ├── server.py          # Main MCP server
-│   │   ├── tools/             # Tool implementations
-│   │   │   ├── __init__.py
-│   │   │   ├── core.py        # build, run, inspect, validate
-│   │   │   ├── project.py     # init, generate, quickstart
-│   │   │   ├── debug.py       # profile, dashboard
-│   │   │   ├── deploy.py      # docker, k8s, ci
-│   │   │   ├── state.py       # state management
-│   │   │   ├── contract.py    # contract, migrate, coherence
-│   │   │   ├── runtime.py     # call, publish, stats
-│   │   │   └── utility.py     # doctor, version, templates
-│   │   ├── session.py         # Session management
-│   │   ├── formatters.py      # Output formatting
-│   │   └── examples.py        # Example loader
-│   └── tests/
-├── examples/                   # Pre-built examples
+│   └── graphbus_mcp/
+│       ├── __init__.py
+│       ├── server.py              # Main MCP server
+│       ├── tools/                 # Tool implementations
+│       │   ├── __init__.py
+│       │   ├── core.py            # build, run, inspect, validate
+│       │   ├── project.py         # init, generate, quickstart
+│       │   ├── debug.py           # profile, dashboard
+│       │   ├── deploy.py          # docker, k8s, ci
+│       │   ├── state.py           # state management
+│       │   ├── contract.py        # contract, migrate, coherence
+│       │   ├── runtime.py         # call, publish, stats
+│       │   └── utility.py         # doctor, version, templates
+│       ├── session.py             # Session management
+│       ├── formatters.py          # Output formatting
+│       └── examples.py            # Example loader
+├── tests/
+│   ├── test_server.py
+│   ├── test_tools/
+│   │   ├── test_core.py
+│   │   ├── test_project.py
+│   │   └── ...
+│   └── test_session.py
+├── examples/                       # Pre-built examples
 │   ├── hello-world/
 │   ├── order-processing/
-│   └── ...
+│   ├── chatbot/
+│   ├── data-pipeline/
+│   ├── api-gateway/
+│   ├── event-sourcing/
+│   ├── saga-pattern/
+│   └── circuit-breaker/
+├── docs/
+│   ├── ARCHITECTURE_CONTEXT.md     # Complete arch context for Claude
+│   ├── mcp_tools_enhanced.json     # Enhanced tool metadata
+│   └── user-guide.md
+├── scripts/
+│   ├── install_dev.sh
+│   ├── install.sh
+│   ├── publish.sh
+│   └── publish_test.sh
 ├── pyproject.toml
 ├── README.md
-└── LICENSE
+├── LICENSE
+└── MANIFEST.in
 ```
+
+**Note**: The design documents (ARCHITECTURE_CONTEXT.md, mcp_tools_enhanced.json, mcp_server_design.md) are currently in the root directory and should be moved to `docs/` when implementing.
 
 ### Key Implementation Files
 
