@@ -181,9 +181,9 @@ class TestRuntimeREPL:
         # Should not crash, just show error
 
     def test_do_clear_command(self, repl):
-        """Test clear command"""
+        """Test cls command (clear screen)"""
         # Should not raise exception
-        repl.do_clear("")
+        repl.do_cls("")
 
     def test_precmd_strips_whitespace(self, repl):
         """Test that precmd strips whitespace"""

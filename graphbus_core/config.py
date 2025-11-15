@@ -43,7 +43,8 @@ class BuildConfig:
     """
     Configuration for Build Mode (agent orchestration & code refactoring).
     """
-    root_package: str  # Python package to scan (e.g. "my_project.agents")
+    root_package: str = ""  # Python package to scan (e.g. "my_project.agents")
+    agent_dirs: list[str] | None = None  # Alternative: list of directories to scan for agents
     llm_config: LLMConfig | None = None  # LLM configuration for agents
     include_modules: list[str] | None = None  # Specific modules to include
     exclude_modules: list[str] | None = None  # Modules to exclude
@@ -52,6 +53,7 @@ class BuildConfig:
     output_dir: str = ".graphbus"  # Where to write artifacts
     enable_human_in_loop: bool = False  # Pause for human approval
     parallel_agents: bool = False  # Run agents in parallel when possible (future)
+    enable_validation: bool = False  # Enable contract validation during build
 
 
 @dataclass
@@ -62,5 +64,6 @@ class RuntimeConfig:
     artifacts_dir: str = ".graphbus"  # Where to load artifacts from
     entrypoint: str | None = None  # Optional entrypoint (e.g. "my_project.main:run")
     enable_message_bus: bool = True  # Enable static pub/sub routing
+    enable_validation: bool = False  # Enable contract validation at runtime
     log_level: str = "INFO"
     extra_params: dict[str, Any] = field(default_factory=dict)

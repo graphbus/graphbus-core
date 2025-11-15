@@ -25,7 +25,7 @@ class UnreliableAgent(GraphBusNode):
     def process(self, value):
         """Process with potential failure."""
         self.call_count += 1
-        if self.fail_after and self.call_count > self.fail_after:
+        if self.fail_after is not None and self.call_count > self.fail_after:
             raise ValueError(f"Simulated failure after {self.fail_after} calls")
         return value * 2
 

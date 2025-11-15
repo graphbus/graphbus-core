@@ -3,7 +3,7 @@ Decorators for GraphBusNode methods
 """
 
 from functools import wraps
-from typing import Callable, Any
+from typing import Callable, Any, Dict
 
 
 def schema_method(input_schema: dict, output_schema: dict):
@@ -104,5 +104,100 @@ def agent_capability(capability: str):
             cls._graphbus_capabilities = []
         cls._graphbus_capabilities.append(capability)
         return cls
+
+    return decorator
+
+
+def contract(version: str, schema: Dict[str, Any]):
+    """
+    Decorator to define an agent's API contract with versioning.
+
+    Args:
+        version: Semantic version (e.g., "1.0.0", "2.1.3")
+        schema: Contract schema defining methods, publishes, subscribes
+
+    Example:
+        @contract(version="2.0.0", schema={
+            "methods": {
+                "process_order": {
+                    "input": {"order_id": "str", "amount": "float"},
+                    "output": {"status": "str", "transaction_id": "str"}
+                }
+            },
+            "publishes": {
+                "/Order/Processed": {
+                    "payload": {"order_id": "str", "status": "str"}
+                }
+            },
+            "subscribes": ["/Order/Created"],
+            "description": "Order processing service"
+        })
+        class OrderProcessor(GraphBusNode):
+            ...
+    """
+    def decorator(cls):
+        # Attach contract metadata to the class
+        cls._graphbus_contract_version = version
+        cls._graphbus_contract_schema = schema
+        cls._graphbus_has_contract = True
+        return cls
+
+    return decorator
+
+
+def schema_version(version: str):
+    """
+    Decorator to mark a method/handler with a specific schema version.
+    Used for schema-aware filtering and auto-migration.
+
+    Args:
+        version: Schema version this method expects (e.g., "1.0.0")
+
+    Example:
+        @subscribe("/Order/Created")
+        @schema_version("1.0.0")
+        def on_order_created(self, event):
+            # This handler expects v1.0.0 schema
+            pass
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        wrapper._graphbus_schema_version = version
+        wrapper._graphbus_decorated = True
+
+        return wrapper
+
+    return decorator
+
+
+def auto_migrate(from_version: str, to_version: str):
+    """
+    Decorator to enable automatic payload migration for a handler.
+
+    Args:
+        from_version: Source schema version
+        to_version: Target schema version
+
+    Example:
+        @subscribe("/User/Updated")
+        @auto_migrate(from_version="1.0.0", to_version="2.0.0")
+        def on_user_updated(self, payload):
+            # Payload will be automatically migrated from v1 to v2
+            pass
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        wrapper._graphbus_auto_migrate = True
+        wrapper._graphbus_migrate_from = from_version
+        wrapper._graphbus_migrate_to = to_version
+        wrapper._graphbus_decorated = True
+
+        return wrapper
 
     return decorator

@@ -30,7 +30,8 @@ class Schema:
         Serialize to dict for JSON artifacts.
         """
         return {
-            "fields": {name: typ.__name__ for name, typ in self.fields.items()},
+            "fields": {name: (typ.__name__ if hasattr(typ, '__name__') else str(typ))
+                      for name, typ in self.fields.items()},
             "description": self.description
         }
 

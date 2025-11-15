@@ -238,11 +238,133 @@ class RuntimeREPL(cmd.Cmd):
         except Exception as e:
             print_error(f"Error getting history: {str(e)}")
 
-    def do_clear(self, arg):
+    def do_reload(self, arg):
+        """
+        Hot reload an agent.
+
+        Usage: reload <agent_name> [--preserve-state]
+
+        Examples:
+          reload HelloService
+          reload HelloService --preserve-state
+        """
+        if not self.executor.hot_reload_manager:
+            print_error("Hot reload is not enabled. Start runtime with --watch flag")
+            return
+
+        if not arg:
+            print_error("Usage: reload <agent_name> [--preserve-state]")
+            return
+
+        parts = arg.split()
+        agent_name = parts[0]
+        preserve_state = "--preserve-state" in parts
+
+        try:
+            with console.status(f"[cyan]Reloading {agent_name}...[/cyan]", spinner="dots"):
+                result = self.executor.hot_reload_manager.reload_agent(
+                    agent_name,
+                    preserve_state=preserve_state
+                )
+
+            if result["success"]:
+                print_success(f"Agent '{agent_name}' reloaded successfully")
+                if result.get("state_preserved"):
+                    console.print("[dim]State preserved[/dim]")
+                console.print(f"[dim]Previous version: {result.get('old_version', 'unknown')}[/dim]")
+                console.print(f"[dim]New version: {result.get('new_version', 'unknown')}[/dim]")
+            else:
+                print_error(f"Failed to reload '{agent_name}': {result.get('error', 'Unknown error')}")
+
+        except Exception as e:
+            print_error(f"Error reloading agent: {str(e)}")
+
+    def do_health(self, arg):
+        """
+        Show agent health status.
+
+        Usage: health [agent_name]
+
+        Examples:
+          health              # Show all agents
+          health HelloService # Show specific agent
+        """
+        if not self.executor.health_monitor:
+            print_error("Health monitoring is not enabled. Start runtime with --enable-health-monitoring flag")
+            return
+
+        try:
+            if arg:
+                # Show specific agent
+                agent_name = arg.strip()
+                metrics = self.executor.health_monitor.get_metrics(agent_name)
+
+                if not metrics:
+                    print_error(f"No health data for agent: {agent_name}")
+                    return
+
+                console.print(f"[bold cyan]Health Status: {agent_name}[/bold cyan]\n")
+
+                table = Table(show_header=False)
+                table.add_column("Metric", style="cyan")
+                table.add_column("Value")
+
+                status_color = {
+                    "healthy": "green",
+                    "degraded": "yellow",
+                    "failed": "red"
+                }.get(metrics.status.value, "white")
+
+                table.add_row("Status", f"[{status_color}]{metrics.status.value.upper()}[/{status_color}]")
+                table.add_row("Total Calls", str(metrics.total_calls))
+                table.add_row("Successful", str(metrics.successful_calls))
+                table.add_row("Failed", str(metrics.failed_calls))
+                table.add_row("Consecutive Failures", str(metrics.consecutive_failures))
+                table.add_row("Error Rate", f"{metrics.error_rate:.1%}")
+                table.add_row("Success Rate", f"{metrics.success_rate:.1%}")
+
+                if metrics.last_error:
+                    table.add_row("Last Error", str(metrics.last_error))
+
+                console.print(table)
+            else:
+                # Show all agents
+                all_metrics = self.executor.health_monitor.get_all_metrics()
+
+                table = Table(show_header=True, header_style="bold cyan")
+                table.add_column("Agent", style="cyan")
+                table.add_column("Status")
+                table.add_column("Calls", justify="right")
+                table.add_column("Success Rate", justify="right")
+                table.add_column("Error Rate", justify="right")
+
+                for agent_name, metrics in sorted(all_metrics.items()):
+                    status_color = {
+                        "healthy": "green",
+                        "degraded": "yellow",
+                        "failed": "red"
+                    }.get(metrics.status.value, "white")
+
+                    status_str = f"[{status_color}]{metrics.status.value.upper()}[/{status_color}]"
+
+                    table.add_row(
+                        agent_name,
+                        status_str,
+                        str(metrics.total_calls),
+                        f"{metrics.success_rate:.1%}",
+                        f"{metrics.error_rate:.1%}"
+                    )
+
+                console.print(table)
+
+        except Exception as e:
+            print_error(f"Error getting health status: {str(e)}")
+
+    def do_cls(self, arg):
         """
         Clear the screen.
 
-        Usage: clear
+        Usage: cls
         """
         console.clear()
 
@@ -262,7 +384,10 @@ class RuntimeREPL(cmd.Cmd):
                 ("nodes", "List all nodes"),
                 ("topics", "List topics and subscribers"),
                 ("history [n]", "Show message history"),
-                ("clear", "Clear the screen"),
+                ("reload <agent> [--preserve-state]", "Hot reload an agent (requires --watch)"),
+                ("health [agent]", "Show agent health status (requires --enable-health-monitoring)"),
+                ("cls", "Clear the screen"),
+                ("clear [agent.method]", "Clear breakpoints (requires --debug)"),
                 ("help [command]", "Show help"),
                 ("exit", "Exit REPL"),
             ]
@@ -289,6 +414,227 @@ class RuntimeREPL(cmd.Cmd):
         """Handle Ctrl+D"""
         console.print()
         return self.do_exit(arg)
+
+    # Debugger commands
+    def do_break(self, arg):
+        """
+        Set a breakpoint on a method.
+
+        Usage: break <agent>.<method> [condition]
+
+        Examples:
+          break HelloService.generate_message
+          break OrderProcessor.process_order payload.get('amount') > 100
+        """
+        if not self.executor.debugger:
+            print_error("Debugger not enabled. Start with --debug flag")
+            return
+
+        if not arg:
+            # List breakpoints
+            breakpoints = self.executor.debugger.list_breakpoints()
+            if not breakpoints:
+                console.print("[dim]No breakpoints set[/dim]")
+                return
+
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("Breakpoint", style="cyan")
+            table.add_column("Condition", style="yellow")
+            table.add_column("Hits", justify="right")
+            table.add_column("Enabled", justify="center")
+
+            for bp in breakpoints:
+                table.add_row(
+                    bp.full_name,
+                    bp.condition or "-",
+                    str(bp.hit_count),
+                    "✓" if bp.enabled else "✗"
+                )
+
+            console.print(table)
+            return
+
+        # Parse agent.method [condition]
+        parts = arg.split(None, 1)
+        method_path = parts[0]
+        condition = parts[1] if len(parts) > 1 else None
+
+        if "." not in method_path:
+            print_error("Invalid format. Use: agent.method")
+            return
+
+        agent_name, method_name = method_path.rsplit(".", 1)
+
+        try:
+            bp = self.executor.debugger.add_breakpoint(agent_name, method_name, condition)
+            print_success(f"Breakpoint set on {bp.full_name}")
+            if condition:
+                console.print(f"[dim]Condition: {condition}[/dim]")
+        except Exception as e:
+            print_error(f"Error setting breakpoint: {str(e)}")
+
+    def do_continue(self, arg):
+        """
+        Continue execution to next breakpoint.
+
+        Usage: continue
+        """
+        if not self.executor.debugger:
+            print_error("Debugger not enabled")
+            return
+
+        try:
+            self.executor.debugger.continue_execution()
+            print_info("Continuing execution...")
+        except Exception as e:
+            print_error(f"Error: {str(e)}")
+
+    def do_step(self, arg):
+        """
+        Step to next method call.
+
+        Usage: step
+        """
+        if not self.executor.debugger:
+            print_error("Debugger not enabled")
+            return
+
+        try:
+            self.executor.debugger.step()
+            print_info("Stepping...")
+        except Exception as e:
+            print_error(f"Error: {str(e)}")
+
+    def do_inspect(self, arg):
+        """
+        Inspect current execution frame.
+
+        Usage: inspect [payload|locals]
+
+        Examples:
+          inspect          # Show current frame
+          inspect payload  # Show payload
+          inspect locals   # Show local variables
+        """
+        if not self.executor.debugger:
+            print_error("Debugger not enabled")
+            return
+
+        frame = self.executor.debugger.get_current_frame()
+        if not frame:
+            print_info("No current execution frame")
+            return
+
+        if not arg or arg == "frame":
+            # Show frame info
+            table = Table(show_header=False)
+            table.add_column("Property", style="cyan")
+            table.add_column("Value")
+
+            table.add_row("Agent", frame.agent_name)
+            table.add_row("Method", frame.method_name)
+            table.add_row("Timestamp", frame.timestamp.strftime("%H:%M:%S.%f"))
+
+            console.print(table)
+
+        elif arg == "payload":
+            # Show payload
+            if frame.payload is not None:
+                payload_json = json.dumps(frame.payload, indent=2, default=str)
+                syntax = Syntax(payload_json, "json", theme="monokai", line_numbers=False)
+                console.print(syntax)
+            else:
+                console.print("[dim]No payload[/dim]")
+
+        elif arg == "locals":
+            # Show local variables
+            if frame.local_vars:
+                locals_json = json.dumps(frame.local_vars, indent=2, default=str)
+                syntax = Syntax(locals_json, "json", theme="monokai", line_numbers=False)
+                console.print(syntax)
+            else:
+                console.print("[dim]No local variables[/dim]")
+
+        else:
+            print_error(f"Unknown inspect target: {arg}")
+
+    def do_trace(self, arg):
+        """
+        Show execution trace.
+
+        Usage: trace [limit]
+
+        Examples:
+          trace      # Show last 20 calls
+          trace 50   # Show last 50 calls
+        """
+        if not self.executor.debugger:
+            print_error("Debugger not enabled")
+            return
+
+        try:
+            limit = int(arg) if arg else 20
+        except ValueError:
+            print_error("Invalid limit. Use: trace [limit]")
+            return
+
+        trace = self.executor.debugger.get_execution_trace(limit)
+
+        if not trace:
+            print_info("No execution trace available")
+            return
+
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("#", justify="right", style="dim")
+        table.add_column("Time", style="cyan")
+        table.add_column("Agent.Method", style="yellow")
+        table.add_column("Payload", style="dim")
+
+        for i, frame in enumerate(trace, 1):
+            payload_str = str(frame.payload)[:40]
+            if len(str(frame.payload)) > 40:
+                payload_str += "..."
+
+            table.add_row(
+                str(i),
+                frame.timestamp.strftime("%H:%M:%S.%f")[:-3],
+                frame.full_name,
+                payload_str
+            )
+
+        console.print(table)
+
+    def do_clear(self, arg):
+        """
+        Clear breakpoints.
+
+        Usage: clear [agent.method]
+
+        Examples:
+          clear                              # Clear all breakpoints
+          clear HelloService.generate_message  # Clear specific breakpoint
+        """
+        if not self.executor.debugger:
+            print_error("Debugger not enabled")
+            return
+
+        if not arg:
+            # Clear all
+            self.executor.debugger.clear_breakpoints()
+            print_success("All breakpoints cleared")
+            return
+
+        # Clear specific breakpoint
+        if "." not in arg:
+            print_error("Invalid format. Use: agent.method")
+            return
+
+        agent_name, method_name = arg.rsplit(".", 1)
+
+        if self.executor.debugger.remove_breakpoint(agent_name, method_name):
+            print_success(f"Breakpoint removed: {arg}")
+        else:
+            print_error(f"No breakpoint found: {arg}")
 
     def precmd(self, line):
         """Process line before execution"""

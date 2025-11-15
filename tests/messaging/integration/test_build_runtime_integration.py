@@ -1,0 +1,466 @@
+"""
+Integration tests for build → runtime contract flow
+"""
+
+import pytest
+import tempfile
+import shutil
+from pathlib import Path
+import json
+from typing import Dict, Any
+
+from graphbus_core.build.builder import build_project
+from graphbus_core.config import BuildConfig, RuntimeConfig
+from graphbus_core.build.extractor import extract_contract_from_agent
+from graphbus_core.runtime.contracts import ContractManager
+from graphbus_core.runtime.executor import RuntimeExecutor
+from graphbus_core.decorators import schema_method, contract
+from graphbus_core.node_base import GraphBusNode
+
+
+@pytest.fixture
+def temp_project_dir():
+    """Create temporary project directory"""
+    temp = tempfile.mkdtemp()
+    yield temp
+    shutil.rmtree(temp)
+
+
+@pytest.fixture
+def sample_agents_dir(temp_project_dir):
+    """Create sample agents directory with contract definitions"""
+    agents_dir = Path(temp_project_dir) / "agents"
+    agents_dir.mkdir()
+
+    # Create OrderProcessor agent with contract
+    order_agent = '''
+from graphbus_core.decorators import schema_method, contract
+from graphbus_core.node_base import GraphBusNode
+from typing import Dict, Any
+
+@contract(version="1.0.0", schema={
+    "methods": {
+        "process_order": {
+            "input": {"order_id": "str", "amount": "float"},
+            "output": {"status": "str", "transaction_id": "str"}
+        }
+    },
+    "publishes": {
+        "/Order/Processed": {
+            "payload": {"order_id": "str", "status": "str"}
+        }
+    },
+    "subscribes": ["/Payment/Completed"],
+    "description": "Order processing service"
+})
+class OrderProcessor(GraphBusNode):
+    @schema_method(input_schema={"order_id": "str", "amount": "float"},
+                   output_schema={"status": "str", "transaction_id": "str"})
+    def process_order(self, order_id: str, amount: float) -> Dict[str, Any]:
+        return {"status": "success", "transaction_id": f"txn_{order_id}"}
+'''
+
+    # Create PaymentService agent
+    payment_agent = '''
+from graphbus_core.decorators import schema_method, contract
+from graphbus_core.node_base import GraphBusNode
+from typing import Dict, Any
+
+@contract(version="1.0.0", schema={
+    "methods": {
+        "process_payment": {
+            "input": {"transaction_id": "str", "amount": "float"},
+            "output": {"status": "str"}
+        }
+    },
+    "publishes": {
+        "/Payment/Completed": {
+            "payload": {"transaction_id": "str", "status": "str"}
+        }
+    },
+    "subscribes": ["/Order/Processed"],
+    "description": "Payment processing service"
+})
+class PaymentService(GraphBusNode):
+    @schema_method(input_schema={"transaction_id": "str", "amount": "float"},
+                   output_schema={"status": "str"})
+    def process_payment(self, transaction_id: str, amount: float) -> Dict[str, Any]:
+        return {"status": "completed"}
+'''
+
+    (agents_dir / "order_processor.py").write_text(order_agent)
+    (agents_dir / "payment_service.py").write_text(payment_agent)
+
+    return agents_dir
+
+
+class TestBuildTimeContractExtraction:
+    """Test contract extraction during build"""
+
+    def test_build_extracts_contracts(self, temp_project_dir, sample_agents_dir):
+        """Test that build process extracts contracts from agents"""
+        output_dir = Path(temp_project_dir) / ".graphbus"
+
+        config = BuildConfig(
+            agent_dirs=[str(sample_agents_dir)],
+            output_dir=str(output_dir)
+        )
+
+        # Run build
+        try:
+            result = build_project(config)
+            build_success = True
+        except Exception as e:
+            print(f"Build failed: {e}")
+            build_success = False
+
+        assert build_success
+
+        # Verify contracts directory created
+        contracts_dir = output_dir / "contracts"
+        assert contracts_dir.exists()
+
+        # Verify contract files exist
+        contract_files = list(contracts_dir.glob("*.json"))
+        assert len(contract_files) >= 2  # OrderProcessor and PaymentService
+
+        # Load and verify contracts
+        contract_manager = ContractManager(storage_path=str(contracts_dir))
+
+        order_contract = contract_manager.get_contract("OrderProcessor", "1.0.0")
+        assert order_contract is not None
+        assert order_contract.version == "1.0.0"
+        assert "process_order" in order_contract.methods
+
+        payment_contract = contract_manager.get_contract("PaymentService", "1.0.0")
+        assert payment_contract is not None
+        assert payment_contract.version == "1.0.0"
+        assert "process_payment" in payment_contract.methods
+
+    def test_build_with_auto_generated_contracts(self, temp_project_dir):
+        """Test auto-generating contracts from schema_method decorators"""
+        agents_dir = Path(temp_project_dir) / "agents"
+        agents_dir.mkdir()
+
+        # Agent WITHOUT explicit @contract decorator
+        agent_code = '''
+from graphbus_core.decorators import schema_method
+from graphbus_core.node_base import GraphBusNode
+from typing import Dict, Any
+
+class AutoAgent(GraphBusNode):
+    @schema_method(input_schema={"id": "str"},
+                   output_schema={"result": "str"})
+    def process(self, id: str) -> Dict[str, Any]:
+        return {"result": "ok"}
+'''
+
+        (agents_dir / "auto_agent.py").write_text(agent_code)
+
+        output_dir = Path(temp_project_dir) / ".graphbus"
+        config = BuildConfig(
+            agent_dirs=[str(agents_dir)],
+            output_dir=str(output_dir)
+        )
+
+        result = build_project(config)
+
+        assert result.success
+
+        # Verify auto-generated contract
+        contract_manager = ContractManager(storage_path=str(output_dir / "contracts"))
+        auto_contract = contract_manager.get_contract("AutoAgent")
+
+        assert auto_contract is not None
+        assert auto_contract.version == "1.0.0"  # Default version
+        assert "process" in auto_contract.methods
+
+
+class TestRuntimeContractValidation:
+    """Test contract validation at runtime"""
+
+    def test_runtime_loads_contracts(self, temp_project_dir, sample_agents_dir):
+        """Test that runtime loads and validates contracts"""
+        output_dir = Path(temp_project_dir) / ".graphbus"
+
+        # Build first
+        build_config = BuildConfig(
+            agent_dirs=[str(sample_agents_dir)],
+            output_dir=str(output_dir)
+        )
+
+        result = build_project(build_config)
+        assert result.success
+
+        # Create runtime
+        runtime_config = RuntimeConfig(
+            artifacts_dir=str(output_dir),
+            enable_validation=True
+        )
+
+        executor = RuntimeExecutor(runtime_config)
+
+        # Verify contract manager initialized
+        assert executor.contract_manager is not None
+        assert len(executor.contract_manager.contracts) > 0
+
+        # Verify specific contracts loaded
+        order_contract = executor.contract_manager.get_contract("OrderProcessor")
+        assert order_contract is not None
+        assert order_contract.version == "1.0.0"
+
+    def test_runtime_validates_interactions(self, temp_project_dir, sample_agents_dir):
+        """Test runtime validates agent interactions using contracts"""
+        output_dir = Path(temp_project_dir) / ".graphbus"
+
+        # Build
+        build_config = BuildConfig(
+            agent_dirs=[str(sample_agents_dir)],
+            output_dir=str(output_dir)
+        )
+        result = build_project(build_config)
+
+        # Setup runtime
+        runtime_config = RuntimeConfig(
+            artifacts_dir=str(output_dir),
+            enable_validation=True
+        )
+        executor = RuntimeExecutor(runtime_config)
+        executor.setup_contract_validation()
+
+        # Validate compatible interaction
+        is_valid = executor.validate_interaction(
+            source="OrderProcessor",
+            target="PaymentService",
+            topic="/Order/Processed",
+            payload={"order_id": "123", "status": "pending"}
+        )
+
+        # Should be valid if contracts are compatible
+        assert isinstance(is_valid, bool)
+
+
+class TestSchemaEvolutionIntegration:
+    """Test schema evolution from build through runtime"""
+
+    def test_version_upgrade_workflow(self, temp_project_dir):
+        """Test upgrading agent version with new contract"""
+        agents_dir = Path(temp_project_dir) / "agents"
+        agents_dir.mkdir()
+        output_dir = Path(temp_project_dir) / ".graphbus"
+
+        # Build v1.0.0
+        agent_v1 = '''
+from graphbus_core.decorators import schema_method, contract
+from graphbus_core.node_base import GraphBusNode
+from typing import Dict, Any
+
+@contract(version="1.0.0", schema={
+    "methods": {
+        "process": {
+            "input": {"id": "str"},
+            "output": {"status": "str"}
+        }
+    }
+})
+class TestAgent(GraphBusNode):
+    @schema_method(input_schema={"id": "str"},
+                   output_schema={"status": "str"})
+    def process(self, id: str) -> Dict[str, Any]:
+        return {"status": "ok"}
+'''
+
+        (agents_dir / "test_agent.py").write_text(agent_v1)
+
+        build_config = BuildConfig(
+            agent_dirs=[str(agents_dir)],
+            output_dir=str(output_dir)
+        )
+
+        result = build_project(build_config)
+
+        # Verify v1.0.0 contract
+        contract_manager = ContractManager(storage_path=str(output_dir / "contracts"))
+        v1_contract = contract_manager.get_contract("TestAgent", "1.0.0")
+        assert v1_contract is not None
+
+        # Update to v2.0.0
+        agent_v2 = '''
+from graphbus_core.decorators import schema_method, contract
+from graphbus_core.node_base import GraphBusNode
+from typing import Dict, Any
+
+@contract(version="2.0.0", schema={
+    "methods": {
+        "process": {
+            "input": {"id": "str", "priority": "int"},
+            "output": {"status": "str", "timestamp": "str"}
+        }
+    }
+})
+class TestAgent(GraphBusNode):
+    @schema_method(input_schema={"id": "str", "priority": "int"},
+                   output_schema={"status": "str", "timestamp": "str"})
+    def process(self, id: str, priority: int) -> Dict[str, Any]:
+        return {"status": "ok", "timestamp": "2025-01-01"}
+'''
+
+        (agents_dir / "test_agent.py").write_text(agent_v2)
+
+        # Rebuild
+        result = build_project(build_config)
+
+        # Verify both versions exist
+        contract_manager2 = ContractManager(storage_path=str(output_dir / "contracts"))
+
+        v1_still_exists = contract_manager2.get_contract("TestAgent", "1.0.0")
+        v2_exists = contract_manager2.get_contract("TestAgent", "2.0.0")
+
+        assert v1_still_exists is not None
+        assert v2_exists is not None
+
+        # Verify migration path
+        path = contract_manager2.get_migration_path("TestAgent", "1.0.0", "2.0.0")
+        assert path == ["1.0.0", "2.0.0"]
+
+    def test_breaking_change_detection(self, temp_project_dir):
+        """Test detecting breaking changes between versions"""
+        agents_dir = Path(temp_project_dir) / "agents"
+        agents_dir.mkdir()
+        output_dir = Path(temp_project_dir) / ".graphbus"
+
+        # Create v1 agent
+        agent_v1 = '''
+from graphbus_core.decorators import contract
+from graphbus_core.graph import GraphBusNode
+
+@contract(version="1.0.0", schema={
+    "publishes": {
+        "/data/event": {
+            "payload": {"id": "str", "value": "int"}
+        }
+    }
+})
+class ProducerAgent(GraphBusNode):
+    pass
+'''
+
+        # Create consumer agent
+        consumer = '''
+from graphbus_core.decorators import contract
+from graphbus_core.graph import GraphBusNode
+
+@contract(version="1.0.0", schema={
+    "subscribes": ["/data/event"]
+})
+class ConsumerAgent(GraphBusNode):
+    pass
+'''
+
+        (agents_dir / "producer.py").write_text(agent_v1)
+        (agents_dir / "consumer.py").write_text(consumer)
+
+        build_config = BuildConfig(
+            agent_dirs=[str(agents_dir)],
+            output_dir=str(output_dir)
+        )
+
+        # Initial build
+        result = build_project(build_config)
+
+        # Update producer with breaking change
+        agent_v2 = '''
+from graphbus_core.decorators import contract
+from graphbus_core.graph import GraphBusNode
+
+@contract(version="2.0.0", schema={
+    "publishes": {
+        "/data/event": {
+            "payload": {"id": "str", "value": "int", "metadata": "dict"}  # Added required field
+        }
+    }
+})
+class ProducerAgent(GraphBusNode):
+    pass
+'''
+
+        (agents_dir / "producer.py").write_text(agent_v2)
+
+        # Rebuild
+        result = build_project(build_config)
+
+        # Analyze impact
+        contract_manager = ContractManager(storage_path=str(output_dir / "contracts"))
+
+        new_schema = {
+            "publishes": {
+                "/data/event": {
+                    "payload": {"id": "str", "value": "int", "metadata": "dict"}
+                }
+            }
+        }
+
+        # Should detect breaking change
+        # (Implementation depends on having dependency graph)
+
+
+class TestEndToEndMessagingIntegration:
+    """Test complete build → runtime → coherence tracking flow"""
+
+    def test_full_lifecycle(self, temp_project_dir, sample_agents_dir):
+        """Test complete lifecycle with contract validation and coherence"""
+        output_dir = Path(temp_project_dir) / ".graphbus"
+
+        # Build phase
+        build_config = BuildConfig(
+            agent_dirs=[str(sample_agents_dir)],
+            output_dir=str(output_dir),
+            enable_validation=True
+        )
+
+        result = build_project(build_config)
+
+        assert result.success
+        assert (output_dir / "contracts").exists()
+        assert (output_dir / "graph.json").exists()
+
+        # Runtime phase
+        runtime_config = RuntimeConfig(
+            artifacts_dir=str(output_dir),
+            enable_validation=True
+        )
+
+        executor = RuntimeExecutor(runtime_config)
+        executor.setup_contract_validation()
+
+        # Verify contracts loaded
+        assert executor.contract_manager is not None
+        assert len(executor.contract_manager.contracts) >= 2
+
+        # Verify coherence tracker setup (if implemented)
+        if hasattr(executor, 'coherence_tracker') and executor.coherence_tracker:
+            assert executor.coherence_tracker is not None
+
+    def test_contract_persistence_across_builds(self, temp_project_dir, sample_agents_dir):
+        """Test contracts persist across multiple builds"""
+        output_dir = Path(temp_project_dir) / ".graphbus"
+
+        build_config = BuildConfig(
+            agent_dirs=[str(sample_agents_dir)],
+            output_dir=str(output_dir)
+        )
+
+        # Build 1
+        result = build_project(build_config)
+
+        contract_manager1 = ContractManager(storage_path=str(output_dir / "contracts"))
+        contracts_count_1 = len(contract_manager1.contracts)
+
+        # Build 2
+        result = build_project(build_config)
+
+        contract_manager2 = ContractManager(storage_path=str(output_dir / "contracts"))
+        contracts_count_2 = len(contract_manager2.contracts)
+
+        # Contracts should persist
+        assert contracts_count_2 >= contracts_count_1

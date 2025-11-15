@@ -42,7 +42,39 @@ from graphbus_cli.utils.errors import RuntimeError as CLIRuntimeError
     type=int,
     help='Show stats every N seconds'
 )
-def run(artifacts_dir: str, no_message_bus: bool, interactive: bool, verbose: bool, stats_interval: int):
+@click.option(
+    '--persist-state',
+    is_flag=True,
+    help='Enable agent state persistence'
+)
+@click.option(
+    '--restore-state',
+    is_flag=True,
+    help='Restore agent state from previous run'
+)
+@click.option(
+    '--watch',
+    is_flag=True,
+    help='Watch for file changes and hot reload agents'
+)
+@click.option(
+    '--enable-health-monitoring',
+    is_flag=True,
+    help='Enable health monitoring and auto-restart'
+)
+@click.option(
+    '--debug',
+    is_flag=True,
+    help='Enable interactive debugger with breakpoints'
+)
+@click.option(
+    '--metrics-port',
+    type=int,
+    help='Enable Prometheus metrics on specified port (e.g., 9090)'
+)
+def run(artifacts_dir: str, no_message_bus: bool, interactive: bool, verbose: bool, stats_interval: int,
+        persist_state: bool, restore_state: bool, watch: bool, enable_health_monitoring: bool, debug: bool,
+        metrics_port: int):
     """
     Run agent graph from build artifacts.
 
@@ -52,10 +84,20 @@ def run(artifacts_dir: str, no_message_bus: bool, interactive: bool, verbose: bo
 
     \b
     Examples:
-      graphbus run .graphbus                 # Run from default artifacts
-      graphbus run .graphbus --interactive   # Start interactive REPL
-      graphbus run build/ -v                 # Verbose runtime logging
-      graphbus run .graphbus --no-message-bus # Disable event routing
+      graphbus run .graphbus                        # Run from default artifacts
+      graphbus run .graphbus --interactive          # Start interactive REPL
+      graphbus run .graphbus --persist-state        # Enable state persistence
+      graphbus run .graphbus --watch                # Hot reload on file changes
+      graphbus run .graphbus --enable-health-monitoring  # Monitor agent health
+      graphbus run build/ -v                        # Verbose runtime logging
+      graphbus run .graphbus --no-message-bus       # Disable event routing
+
+    \b
+    Phase 1 Features:
+      --persist-state            Save agent state to disk
+      --restore-state            Restore state from previous run
+      --watch                    Auto-reload agents on file changes
+      --enable-health-monitoring Track agent health and auto-restart
 
     \b
     Interactive Mode:
@@ -64,6 +106,7 @@ def run(artifacts_dir: str, no_message_bus: bool, interactive: bool, verbose: bo
         - Publish events
         - View statistics
         - Inspect message history
+        - Reload agents (with --watch)
 
     \b
     Shutdown:
@@ -90,17 +133,57 @@ def run(artifacts_dir: str, no_message_bus: bool, interactive: bool, verbose: bo
             enable_message_bus=not no_message_bus
         )
 
-        # Start runtime
+        # Start runtime with Phase 1 features
+        enable_hot_reload = watch
+        enable_state = persist_state or restore_state
+
         with console.status("[cyan]Starting runtime...[/cyan]", spinner="dots"):
             executor = RuntimeExecutor(config)
-            executor.start()
+            executor.start(
+                enable_state_persistence=enable_state,
+                enable_hot_reload=enable_hot_reload,
+                enable_health_monitoring=enable_health_monitoring,
+                enable_debugger=debug
+            )
+
+        # Start metrics server if requested
+        metrics_server = None
+        if metrics_port:
+            try:
+                from graphbus_core.runtime.monitoring import PrometheusMetrics, MetricsServer
+
+                metrics = PrometheusMetrics()
+                metrics_server = MetricsServer(metrics, port=metrics_port)
+                metrics_server.start()
+
+                console.print()
+                print_success(f"Metrics server started on port {metrics_port}")
+                print_info(f"Metrics: http://localhost:{metrics_port}/metrics")
+
+                # Attach metrics to executor for collection
+                executor.metrics = metrics
+            except ImportError:
+                print_warning("Metrics support requires additional dependencies")
+            except Exception as e:
+                print_warning(f"Failed to start metrics server: {e}")
+
+        # Restore state if requested
+        if restore_state and executor.state_manager:
+            with console.status("[cyan]Restoring agent state...[/cyan]", spinner="dots"):
+                for node_name in executor.nodes.keys():
+                    state = executor.state_manager.load_state(node_name)
+                    if state:
+                        node = executor.get_node(node_name)
+                        if hasattr(node, 'set_state'):
+                            node.set_state(state)
+                            print_info(f"Restored state for {node_name}")
 
         console.print()
         print_success("Runtime started successfully")
         console.print()
 
         # Display runtime status
-        _display_runtime_status(executor, verbose)
+        _display_runtime_status(executor, verbose, enable_state, enable_hot_reload, enable_health_monitoring, debug)
 
         # Interactive mode
         if interactive:
@@ -143,7 +226,9 @@ def run(artifacts_dir: str, no_message_bus: bool, interactive: bool, verbose: bo
         raise CLIRuntimeError(f"Runtime error: {str(e)}")
 
 
-def _display_runtime_status(executor: RuntimeExecutor, verbose: bool):
+def _display_runtime_status(executor: RuntimeExecutor, verbose: bool,
+                            state_enabled: bool = False, hot_reload_enabled: bool = False,
+                            health_monitoring_enabled: bool = False, debug_enabled: bool = False):
     """Display current runtime status"""
     print_header("Runtime Status")
 
@@ -153,6 +238,23 @@ def _display_runtime_status(executor: RuntimeExecutor, verbose: bool):
     # Display basic info
     console.print(f"[cyan]Status:[/cyan] {'RUNNING' if stats['is_running'] else 'STOPPED'}")
     console.print(f"[cyan]Nodes:[/cyan] {stats['nodes_count']}")
+
+    # Display Phase 1 features status
+    if state_enabled or hot_reload_enabled or health_monitoring_enabled or debug_enabled:
+        console.print("\n[cyan]Advanced Features:[/cyan]")
+        if state_enabled:
+            console.print("  • State Persistence: [green]ENABLED[/green]")
+        if hot_reload_enabled:
+            console.print("  • Hot Reload: [green]ENABLED[/green]")
+        if health_monitoring_enabled:
+            console.print("  • Health Monitoring: [green]ENABLED[/green]")
+            if executor.health_monitor:
+                unhealthy = executor.health_monitor.get_unhealthy_agents()
+                if unhealthy:
+                    console.print(f"    [yellow]⚠ {len(unhealthy)} unhealthy agent(s)[/yellow]")
+        if debug_enabled:
+            console.print("  • Interactive Debugger: [green]ENABLED[/green]")
+            console.print("    [dim]Use 'break', 'step', 'continue', 'inspect', 'trace' commands[/dim]")
 
     # List agents
     console.print("\n[cyan]Agents:[/cyan]")

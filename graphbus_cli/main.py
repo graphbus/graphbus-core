@@ -21,18 +21,39 @@ def cli(ctx):
     Build, run, and manage agent graphs with event-driven communication.
 
     \b
-    Common Commands:
+    Core Commands:
       build     - Build agent graphs from source
       run       - Run an agent graph runtime
       inspect   - Inspect build artifacts
       validate  - Validate agent definitions
 
     \b
+    Development Tools:
+      init      - Initialize new project from template
+      generate  - Generate agent boilerplate code
+      profile   - Profile runtime performance
+      dashboard - Launch web-based visualization dashboard
+
+    \b
+    Deployment Tools:
+      docker    - Docker containerization tools
+      k8s       - Kubernetes deployment tools
+      ci        - CI/CD pipeline generators
+
+    \b
+    Advanced Features:
+      state     - Manage agent state persistence
+      --debug   - Enable interactive debugger (use with run)
+      --watch   - Enable hot reload (use with run)
+
+    \b
     Examples:
-      graphbus build agents/           # Build agents from directory
-      graphbus run .graphbus           # Run built artifacts
-      graphbus inspect .graphbus       # Inspect artifacts
-      graphbus validate agents/        # Validate agent definitions
+      graphbus init my-project              # Create new project
+      graphbus generate agent OrderProcessor  # Generate agent code
+      graphbus build agents/                # Build agents from directory
+      graphbus run .graphbus --debug        # Run with debugger
+      graphbus profile .graphbus            # Profile performance
+      graphbus dashboard .graphbus          # Launch dashboard
 
     For more help on a specific command, use:
       graphbus COMMAND --help
@@ -46,11 +67,34 @@ from graphbus_cli.commands.build import build
 from graphbus_cli.commands.run import run
 from graphbus_cli.commands.inspect import inspect
 from graphbus_cli.commands.validate import validate
+from graphbus_cli.commands.state import state
+from graphbus_cli.commands.init import init, list_templates_cmd
+from graphbus_cli.commands.generate import generate
+from graphbus_cli.commands.profile import profile
+from graphbus_cli.commands.dashboard import dashboard
+from graphbus_cli.commands.docker import docker
+from graphbus_cli.commands.k8s import k8s
+from graphbus_cli.commands.ci import ci
+from graphbus_cli.commands.contract import contract
+from graphbus_cli.commands.migrate import migrate
+from graphbus_cli.commands.coherence import coherence
 
 cli.add_command(build)
 cli.add_command(run)
 cli.add_command(inspect)
 cli.add_command(validate)
+cli.add_command(state)
+cli.add_command(init)
+cli.add_command(list_templates_cmd)
+cli.add_command(generate)
+cli.add_command(profile)
+cli.add_command(dashboard)
+cli.add_command(docker)
+cli.add_command(k8s)
+cli.add_command(ci)
+cli.add_command(contract)
+cli.add_command(migrate)
+cli.add_command(coherence)
 
 
 def main():

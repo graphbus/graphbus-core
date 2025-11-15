@@ -1,0 +1,21 @@
+{
+  "agent_name": "HelloService",
+  "version": "1.0.0",
+  "methods": {
+    "generate_message": {
+      "input": {},
+      "output": {
+        "message": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "description": "Generate a simple greeting message."
+    }
+  },
+  "publishes": {},
+  "subscribes": [],
+  "description": "Auto-generated contract for HelloService",
+  "timestamp": "2025-11-15T10:38:24.518439"
+}

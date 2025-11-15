@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 import types
 import sys
+from unittest.mock import patch
 
 from graphbus_core.config import RuntimeConfig
 from graphbus_core.runtime.executor import RuntimeExecutor
@@ -106,12 +107,22 @@ class TestHotReloadWorkflow:
 
         return str(artifacts_dir)
 
-    def test_hot_reload_preserves_state(self, artifacts_dir):
+    @patch('importlib.reload')
+    def test_hot_reload_preserves_state(self, mock_reload, artifacts_dir):
         """Test that hot reload preserves agent state."""
         # Setup module with v1
         dynamic_module = types.ModuleType('dynamic_module')
         dynamic_module.DynamicAgent = DynamicAgent
+        dynamic_module.__file__ = "dynamic_module.py"
         sys.modules['dynamic_module'] = dynamic_module
+
+        # Mock reload to update the module with v2
+        def reload_side_effect(module):
+            if module is dynamic_module:
+                module.DynamicAgent = DynamicAgentV2
+            return module
+
+        mock_reload.side_effect = reload_side_effect
 
         try:
             config = RuntimeConfig(
@@ -130,7 +141,6 @@ class TestHotReloadWorkflow:
             assert agent.VERSION == 1
 
             # Hot reload with v2
-            dynamic_module.DynamicAgent = DynamicAgentV2
             result = executor.hot_reload_manager.reload_agent("DynamicAgent", preserve_state=True)
 
             assert result["success"] is True
@@ -149,11 +159,21 @@ class TestHotReloadWorkflow:
         finally:
             del sys.modules['dynamic_module']
 
-    def test_hot_reload_without_state_preservation(self, artifacts_dir):
+    @patch('importlib.reload')
+    def test_hot_reload_without_state_preservation(self, mock_reload, artifacts_dir):
         """Test hot reload without state preservation."""
         dynamic_module = types.ModuleType('dynamic_module')
         dynamic_module.DynamicAgent = DynamicAgent
+        dynamic_module.__file__ = "dynamic_module.py"
         sys.modules['dynamic_module'] = dynamic_module
+
+        # Mock reload to update the module with v2
+        def reload_side_effect(module):
+            if module is dynamic_module:
+                module.DynamicAgent = DynamicAgentV2
+            return module
+
+        mock_reload.side_effect = reload_side_effect
 
         try:
             config = RuntimeConfig(
@@ -168,7 +188,6 @@ class TestHotReloadWorkflow:
             agent.data = {"counter": 42}
 
             # Hot reload without preserving state
-            dynamic_module.DynamicAgent = DynamicAgentV2
             result = executor.hot_reload_manager.reload_agent("DynamicAgent", preserve_state=False)
 
             assert result["success"] is True
@@ -182,11 +201,21 @@ class TestHotReloadWorkflow:
         finally:
             del sys.modules['dynamic_module']
 
-    def test_reload_all_agents_workflow(self, artifacts_dir):
+    @patch('importlib.reload')
+    def test_reload_all_agents_workflow(self, mock_reload, artifacts_dir):
         """Test reloading all agents at once."""
         dynamic_module = types.ModuleType('dynamic_module')
         dynamic_module.DynamicAgent = DynamicAgent
+        dynamic_module.__file__ = "dynamic_module.py"
         sys.modules['dynamic_module'] = dynamic_module
+
+        # Mock reload to update the module with v2
+        def reload_side_effect(module):
+            if module is dynamic_module:
+                module.DynamicAgent = DynamicAgentV2
+            return module
+
+        mock_reload.side_effect = reload_side_effect
 
         try:
             config = RuntimeConfig(
@@ -195,9 +224,6 @@ class TestHotReloadWorkflow:
             )
             executor = RuntimeExecutor(config)
             executor.start(enable_hot_reload=True)
-
-            # Update module
-            dynamic_module.DynamicAgent = DynamicAgentV2
 
             # Reload all
             result = executor.hot_reload_manager.reload_all_agents()
@@ -215,11 +241,24 @@ class TestHotReloadWorkflow:
         finally:
             del sys.modules['dynamic_module']
 
-    def test_reload_history_tracking(self, artifacts_dir):
+    @patch('importlib.reload')
+    def test_reload_history_tracking(self, mock_reload, artifacts_dir):
         """Test that reload history is tracked."""
         dynamic_module = types.ModuleType('dynamic_module')
         dynamic_module.DynamicAgent = DynamicAgent
+        dynamic_module.__file__ = "dynamic_module.py"
         sys.modules['dynamic_module'] = dynamic_module
+
+        # Mock reload to alternate between v1 and v2
+        reload_count = [0]
+
+        def reload_side_effect(module):
+            if module is dynamic_module:
+                reload_count[0] += 1
+                module.DynamicAgent = DynamicAgentV2 if reload_count[0] % 2 else DynamicAgent
+            return module
+
+        mock_reload.side_effect = reload_side_effect
 
         try:
             config = RuntimeConfig(
@@ -231,7 +270,6 @@ class TestHotReloadWorkflow:
 
             # Perform multiple reloads
             for _ in range(3):
-                dynamic_module.DynamicAgent = DynamicAgentV2 if _ % 2 else DynamicAgent
                 executor.hot_reload_manager.reload_agent("DynamicAgent")
 
             # Check history

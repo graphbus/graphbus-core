@@ -1,0 +1,11 @@
+{
+  "agent_name": "LoggerService",
+  "version": "1.0.0",
+  "methods": {},
+  "publishes": {},
+  "subscribes": [
+    "/Hello/MessageGenerated"
+  ],
+  "description": "Auto-generated contract for LoggerService",
+  "timestamp": "2025-11-15T10:38:24.518668"
+}
