@@ -5,12 +5,13 @@ LLM-powered agent for Build Mode
 import json
 from typing import Optional
 
+from graphbus_core.node_base import GraphBusNode
 from graphbus_core.model.agent_def import AgentDefinition, NodeMemory
 from graphbus_core.model.message import Proposal, ProposalEvaluation, CodeChange, generate_id
 from graphbus_core.agents.llm_client import LLMClient
 
 
-class LLMAgent:
+class LLMAgent(GraphBusNode):
     """
     Minimal LLM-powered agent that can analyze code and propose changes.
 
@@ -34,14 +35,29 @@ class LLMAgent:
             llm_client: LLM client for API calls
             memory: Agent memory (optional)
         """
+        # Initialize GraphBusNode base class
+        super().__init__(bus=None, memory=memory or NodeMemory())
+
+        # Set Build Mode since LLMAgent is always used in Build Mode
+        self.set_mode("build")
+
+        # LLM-specific attributes
         self.name = agent_def.name
         self.agent_def = agent_def
         self.llm = llm_client
-        self.memory = memory or NodeMemory()
         self.system_prompt = agent_def.system_prompt.text
         self.is_arbiter = agent_def.is_arbiter
         self.proposal_count = 0  # Track number of proposals made
         self.code_line_count = len(agent_def.source_code.split('\n'))
+
+    def get_system_prompt(self) -> str:
+        """
+        Override GraphBusNode.get_system_prompt() to return instance-level prompt.
+
+        In Build Mode, agents are dynamically created from AgentDefinition,
+        so we use the instance-level system_prompt instead of class-level SYSTEM_PROMPT.
+        """
+        return self.system_prompt
 
     def check_intent_relevance(self, user_intent: str) -> dict:
         """

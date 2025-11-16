@@ -63,8 +63,28 @@ class GraphBusNode:
         return self._mode == "runtime"
 
     # -------------------------------------------------------------------------
-    # Runtime Mode: Event Handling
+    # Runtime Mode: Messaging Primitives
     # -------------------------------------------------------------------------
+
+    def publish(self, topic: str, payload: dict) -> None:
+        """
+        Publish a message to the bus (Runtime Mode).
+
+        This is the primary way for nodes to send messages to other nodes.
+        Messages are routed based on topic subscriptions.
+
+        Args:
+            topic: Topic name (e.g. "/Order/Created")
+            payload: Message data (must be JSON-serializable dict)
+
+        Example:
+            self.publish("/Order/Created", {"order_id": "123", "total": 99.99})
+        """
+        if self.bus:
+            self.bus.publish(topic, payload)
+        else:
+            # No bus connected - this is OK in testing or standalone mode
+            pass
 
     def handle_event(self, topic: str, payload: dict) -> None:
         """
