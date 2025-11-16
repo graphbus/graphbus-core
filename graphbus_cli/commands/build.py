@@ -81,6 +81,11 @@ from graphbus_cli.utils.errors import BuildError
     type=str,
     help='Agent name to use as arbiter for conflict resolution'
 )
+@click.option(
+    '--intent',
+    type=str,
+    help='User intent/goal for agent negotiation (e.g., "optimize performance", "improve error handling")'
+)
 def build(
     agents_dir: str,
     output_dir: str,
@@ -93,7 +98,8 @@ def build(
     max_proposals_per_agent: int,
     convergence_threshold: int,
     protected_files: tuple,
-    arbiter_agent: str
+    arbiter_agent: str,
+    intent: str
 ):
     """
     Build agent graphs from source directory.
@@ -151,6 +157,8 @@ def build(
             print_info(f"Agent orchestration: ENABLED")
             print_info(f"LLM model: {llm_model}")
             print_info(f"Max negotiation rounds: {max_negotiation_rounds}")
+            if intent:
+                print_info(f"User intent: {intent}")
         console.print()
 
         # Create LLM config if agent orchestration is enabled
@@ -183,7 +191,8 @@ def build(
             root_package=module_name,
             output_dir=str(output_path),
             llm_config=llm_config,
-            safety_config=safety_config
+            safety_config=safety_config,
+            user_intent=intent
         )
 
         # Run build project (this handles all the steps)

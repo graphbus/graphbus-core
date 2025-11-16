@@ -164,7 +164,8 @@ def build_project(config: BuildConfig, enable_agents: bool = False) -> BuildArti
                 agent_definitions=agent_definitions,
                 agent_graph=agent_graph,
                 llm_client=llm_client,
-                safety_config=config.safety_config
+                safety_config=config.safety_config,
+                user_intent=config.user_intent
             )
             modified_files = orchestrator.run()
             negotiations = orchestrator.negotiation_engine.get_all_commits()

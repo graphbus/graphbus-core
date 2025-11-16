@@ -19,14 +19,16 @@ class NegotiationEngine:
     - Proposal tracking per agent
     """
 
-    def __init__(self, safety_config: Optional[SafetyConfig] = None):
+    def __init__(self, safety_config: Optional[SafetyConfig] = None, user_intent: Optional[str] = None):
         """
         Initialize negotiation engine.
 
         Args:
             safety_config: Safety configuration with limits and guardrails
+            user_intent: User's goal or intent for the negotiation
         """
         self.safety_config = safety_config or SafetyConfig()
+        self.user_intent = user_intent
         self.proposals: Dict[str, Proposal] = {}
         self.evaluations: Dict[str, List[ProposalEvaluation]] = {}
         self.commits: List[CommitRecord] = []

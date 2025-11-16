@@ -52,6 +52,7 @@ class BuildConfig:
     refactoring_goals: list[str] = field(default_factory=list)  # High-level goals
     safety_config: SafetyConfig = field(default_factory=SafetyConfig)  # Safety guardrails
     output_dir: str = ".graphbus"  # Where to write artifacts
+    user_intent: str | None = None  # User's goal or intent for the build/negotiation
     enable_human_in_loop: bool = False  # Pause for human approval
     parallel_agents: bool = False  # Run agents in parallel when possible (future)
     enable_validation: bool = False  # Enable contract validation during build

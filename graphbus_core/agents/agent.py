@@ -41,21 +41,120 @@ class LLMAgent:
         self.system_prompt = agent_def.system_prompt.text
         self.is_arbiter = agent_def.is_arbiter
         self.proposal_count = 0  # Track number of proposals made
+        self.code_line_count = len(agent_def.source_code.split('\n'))
 
-    def analyze_code(self) -> dict:
+    def check_intent_relevance(self, user_intent: str) -> dict:
+        """
+        Check if the user intent is relevant to this agent's scope.
+
+        Args:
+            user_intent: User's goal or intent
+
+        Returns:
+            Dict with relevance decision and reasoning
+        """
+        prompt = f"""
+You are {self.name}. Here is your current code:
+
+```python
+{self.agent_def.source_code}
+```
+
+User Intent: {user_intent}
+
+Is this user intent relevant to your agent's scope and responsibilities?
+
+Return ONLY a JSON object:
+{{
+  "relevant": true or false,
+  "reasoning": "brief explanation of why this intent is or isn't relevant to your agent",
+  "confidence": 0.0 to 1.0
+}}
+"""
+
+        try:
+            response = self.llm.generate(prompt, system=self.system_prompt)
+            relevance_data = json.loads(response)
+            return relevance_data
+        except Exception as e:
+            print(f"Warning: Agent {self.name} intent relevance check failed: {e}")
+            return {"relevant": False, "reasoning": "Check failed", "confidence": 0.0}
+
+    def check_code_size(self) -> dict:
+        """
+        Check if agent code exceeds size threshold (100 lines).
+
+        Returns:
+            Dict with size check results and refactoring suggestions
+        """
+        if self.code_line_count <= 100:
+            return {
+                "exceeds_threshold": False,
+                "line_count": self.code_line_count,
+                "suggestions": []
+            }
+
+        prompt = f"""
+This agent has {self.code_line_count} lines of code, exceeding the 100-line threshold.
+
+```python
+{self.agent_def.source_code}
+```
+
+Analyze the code and suggest how to refactor it. Return ONLY a JSON object:
+{{
+  "suggestions": [
+    "suggestion 1: what to abstract or subdivide",
+    "suggestion 2: ...",
+    ...
+  ],
+  "potential_new_agents": [
+    {{"name": "NewAgentName", "responsibility": "what it would handle"}}
+  ]
+}}
+"""
+
+        try:
+            response = self.llm.generate(prompt, system=self.system_prompt)
+            refactor_data = json.loads(response)
+            refactor_data["exceeds_threshold"] = True
+            refactor_data["line_count"] = self.code_line_count
+            return refactor_data
+        except Exception as e:
+            print(f"Warning: Agent {self.name} size check failed: {e}")
+            return {
+                "exceeds_threshold": True,
+                "line_count": self.code_line_count,
+                "suggestions": ["Consider breaking into smaller agents"],
+                "potential_new_agents": []
+            }
+
+    def analyze_code(self, user_intent: str = None) -> dict:
         """
         Use LLM to analyze the agent's own code.
+
+        Args:
+            user_intent: Optional user intent/goal to guide analysis
 
         Returns:
             Analysis dict with insights
         """
+        intent_context = ""
+        if user_intent:
+            intent_context = f"""
+
+USER INTENT: {user_intent}
+
+Focus your analysis on improvements that align with this user intent.
+"""
+
         prompt = f"""
 Analyze this code and identify potential improvements:
 
 ```python
 {self.agent_def.source_code}
 ```
-
+{intent_context}
 Return a JSON object with:
 - "summary": Brief summary of what this code does
 - "potential_improvements": List of specific improvements (e.g., "add timestamps", "add color output")
@@ -82,17 +181,27 @@ Keep it simple and practical.
                 "potential_improvements": []
             }
 
-    def propose_improvement(self, improvement_idea: str, round_num: int = 0) -> Optional[Proposal]:
+    def propose_improvement(self, improvement_idea: str, round_num: int = 0, user_intent: str = None) -> Optional[Proposal]:
         """
         Generate a proposal for a specific improvement.
 
         Args:
             improvement_idea: What to improve (e.g., "add timestamps")
             round_num: Negotiation round number
+            user_intent: Optional user intent/goal to align proposal with
 
         Returns:
             Proposal object or None if can't generate one
         """
+        intent_context = ""
+        if user_intent:
+            intent_context = f"""
+
+USER INTENT: {user_intent}
+
+Ensure your proposed change aligns with and supports this user intent.
+"""
+
         prompt = f"""
 Given this code:
 
@@ -101,7 +210,7 @@ Given this code:
 ```
 
 Propose a specific code change to implement this improvement: {improvement_idea}
-
+{intent_context}
 Return ONLY a JSON object with:
 {{
   "target_method": "name of method to modify",

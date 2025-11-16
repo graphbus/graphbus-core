@@ -29,7 +29,8 @@ class AgentOrchestrator:
         agent_definitions: List[AgentDefinition],
         agent_graph: AgentGraph,
         llm_client: LLMClient,
-        safety_config: SafetyConfig = None
+        safety_config: SafetyConfig = None,
+        user_intent: str = None
     ):
         """
         Initialize orchestrator.
@@ -39,14 +40,16 @@ class AgentOrchestrator:
             agent_graph: Agent dependency graph
             llm_client: LLM client for agents
             safety_config: Safety configuration with limits
+            user_intent: User's goal or intent for the negotiation
         """
         self.agent_definitions = {a.name: a for a in agent_definitions}
         self.agent_graph = agent_graph
         self.llm_client = llm_client
         self.safety_config = safety_config or SafetyConfig()
+        self.user_intent = user_intent
 
         self.agents: Dict[str, LLMAgent] = {}
-        self.negotiation_engine = NegotiationEngine(safety_config=self.safety_config)
+        self.negotiation_engine = NegotiationEngine(safety_config=self.safety_config, user_intent=user_intent)
         self.code_writer = CodeWriter(dry_run=False)
 
     def activate_agents(self) -> None:
@@ -73,13 +76,54 @@ class AgentOrchestrator:
     def run_analysis_phase(self) -> None:
         """
         Each agent analyzes its own code.
+        Includes intent relevance and code size checks.
         """
         print("\n[Orchestrator] Running analysis phase...")
+        if self.user_intent:
+            print(f"[Orchestrator] User intent: {self.user_intent}")
+
+        intent_relevance_results = {}
+        code_size_results = {}
 
         for agent_name, agent in self.agents.items():
             print(f"  Analyzing {agent_name}...")
+
+            # Check intent relevance if user intent is provided
+            if self.user_intent:
+                try:
+                    relevance = agent.check_intent_relevance(self.user_intent)
+                    intent_relevance_results[agent_name] = relevance
+                    if relevance.get("relevant", False):
+                        print(f"    ✓ Intent relevant (confidence: {relevance.get('confidence', 0):.2f})")
+                        print(f"      Reason: {relevance.get('reasoning', 'N/A')}")
+                    else:
+                        print(f"    ✗ Intent NOT relevant (confidence: {relevance.get('confidence', 0):.2f})")
+                        print(f"      Reason: {relevance.get('reasoning', 'N/A')}")
+                except Exception as e:
+                    print(f"    Warning: Intent relevance check failed: {e}")
+
+            # Check code size
             try:
-                analysis = agent.analyze_code()
+                size_check = agent.check_code_size()
+                code_size_results[agent_name] = size_check
+                if size_check.get("exceeds_threshold", False):
+                    print(f"    ⚠ Code size exceeds 100 lines ({size_check.get('line_count')} lines)")
+                    suggestions = size_check.get("suggestions", [])
+                    if suggestions:
+                        print(f"      Refactoring suggestions:")
+                        for sugg in suggestions[:2]:  # Show first 2
+                            print(f"        - {sugg}")
+                    new_agents = size_check.get("potential_new_agents", [])
+                    if new_agents:
+                        print(f"      Potential new agents:")
+                        for new_agent in new_agents[:2]:
+                            print(f"        - {new_agent.get('name')}: {new_agent.get('responsibility')}")
+            except Exception as e:
+                print(f"    Warning: Code size check failed: {e}")
+
+            # Regular code analysis
+            try:
+                analysis = agent.analyze_code(user_intent=self.user_intent)
                 improvements = analysis.get("potential_improvements", [])
                 if improvements:
                     print(f"    Found {len(improvements)} potential improvements:")
@@ -87,6 +131,20 @@ class AgentOrchestrator:
                         print(f"      - {imp}")
             except Exception as e:
                 print(f"    Warning: Analysis failed: {e}")
+
+        # Store results in orchestrator for later use
+        self.intent_relevance_results = intent_relevance_results
+        self.code_size_results = code_size_results
+
+        # Check if no agent found the intent relevant
+        if self.user_intent and intent_relevance_results:
+            relevant_agents = [name for name, result in intent_relevance_results.items()
+                             if result.get("relevant", False)]
+            if not relevant_agents:
+                print("\n[Orchestrator] ⚠ WARNING: No agent found the intent relevant!")
+                print("[Orchestrator] This may indicate a need for a NEW AGENT to handle this intent.")
+                print(f"[Orchestrator] Intent: {self.user_intent}")
+                print("[Orchestrator] Consider creating a new agent with this responsibility.")
 
     def run_proposal_phase(self) -> None:
         """
@@ -108,7 +166,7 @@ class AgentOrchestrator:
             if improvement:
                 print(f"  {agent_name}: Proposing '{improvement}'...")
                 try:
-                    proposal = agent.propose_improvement(improvement, round_num=0)
+                    proposal = agent.propose_improvement(improvement, round_num=0, user_intent=self.user_intent)
                     if proposal:
                         self.negotiation_engine.add_proposal(proposal)
                 except Exception as e:
@@ -164,6 +222,8 @@ class AgentOrchestrator:
         """
         print("\n" + "="*60)
         print("AGENT ORCHESTRATION - BUILD MODE")
+        if self.user_intent:
+            print(f"User Intent: {self.user_intent}")
         print(f"Safety: max_rounds={self.safety_config.max_negotiation_rounds}, ")
         print(f"        max_proposals_per_agent={self.safety_config.max_proposals_per_agent}")
         print(f"        arbiter_on_conflict={self.safety_config.require_arbiter_on_conflict}")

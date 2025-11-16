@@ -63,6 +63,11 @@ from graphbus_cli.utils.errors import BuildError
     is_flag=True,
     help='Verbose output'
 )
+@click.option(
+    '--intent',
+    type=str,
+    help='User intent/goal for the negotiation (e.g., "optimize performance", "improve error handling")'
+)
 def negotiate(
     artifacts_dir: str,
     rounds: int,
@@ -72,7 +77,8 @@ def negotiate(
     convergence_threshold: int,
     protected_files: tuple,
     arbiter_agent: str,
-    verbose: bool
+    verbose: bool,
+    intent: str
 ):
     """
     Run LLM agent negotiation on existing build artifacts.
@@ -137,6 +143,8 @@ def negotiate(
         print_info(f"LLM model: {llm_model}")
         print_info(f"Max rounds: {rounds}")
         print_info(f"Max proposals per agent: {max_proposals_per_agent}")
+        if intent:
+            print_info(f"User intent: {intent}")
         console.print()
 
         # Validate API key
@@ -183,6 +191,7 @@ def negotiate(
         #     artifacts_dir=str(graphbus_dir),
         #     llm_config=llm_config,
         #     safety_config=safety_config,
+        #     user_intent=intent,
         #     verbose=verbose
         # )
         # _display_negotiation_summary(results)
