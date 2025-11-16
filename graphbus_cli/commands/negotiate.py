@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from graphbus_core.config import LLMConfig, SafetyConfig
+from graphbus_core.constants import DEFAULT_LLM_MODEL
 from graphbus_cli.utils.output import (
     console, print_success, print_error, print_info,
     print_header
@@ -25,8 +26,8 @@ from graphbus_cli.utils.errors import BuildError
 @click.option(
     '--llm-model',
     type=str,
-    default='claude-sonnet-4-20250514',
-    help='LLM model for agent orchestration (claude-sonnet-4, gpt-4, etc.)'
+    default=DEFAULT_LLM_MODEL,
+    help=f'LLM model for agent orchestration (default: {DEFAULT_LLM_MODEL})'
 )
 @click.option(
     '--llm-api-key',

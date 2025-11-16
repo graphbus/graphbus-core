@@ -5,6 +5,7 @@ LLM client abstraction - minimal Anthropic integration
 import os
 from typing import Optional
 from anthropic import Anthropic
+from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
 
 
 class LLMClient:
@@ -14,16 +15,16 @@ class LLMClient:
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = DEFAULT_LLM_MODEL,
         api_key: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4096
+        temperature: float = DEFAULT_TEMPERATURE,
+        max_tokens: int = DEFAULT_MAX_TOKENS
     ):
         """
         Initialize LLM client.
 
         Args:
-            model: Model to use (default: claude-sonnet-4)
+            model: Model to use (default: from DEFAULT_LLM_MODEL constant)
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
             temperature: Sampling temperature
             max_tokens: Max tokens to generate

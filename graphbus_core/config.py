@@ -4,6 +4,7 @@ Configuration objects for Build and Runtime modes
 
 from dataclasses import dataclass, field
 from typing import Any
+from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT
 
 
 @dataclass
@@ -11,11 +12,11 @@ class LLMConfig:
     """
     Configuration for LLM client (Build Mode only).
     """
-    model: str = "claude-sonnet-4"  # Model to use
+    model: str = DEFAULT_LLM_MODEL  # Model to use
     api_key: str | None = None  # API key (or use environment variable)
-    temperature: float = 0.7
-    max_tokens: int = 4096
-    timeout: int = 60  # seconds
+    temperature: float = DEFAULT_TEMPERATURE
+    max_tokens: int = DEFAULT_MAX_TOKENS
+    timeout: int = DEFAULT_TIMEOUT  # seconds
     base_url: str | None = None  # Optional custom API endpoint
     extra_params: dict[str, Any] = field(default_factory=dict)
 
