@@ -9,8 +9,9 @@ from graphbus_core.agents.llm_client import LLMClient
 from graphbus_core.agents.agent import LLMAgent
 from graphbus_core.agents.negotiation import NegotiationEngine
 from graphbus_core.build.code_writer import CodeWriter
+from graphbus_core.build.artifacts import BuildArtifacts
 from graphbus_core.model.message import CommitRecord
-from graphbus_core.config import SafetyConfig
+from graphbus_core.config import SafetyConfig, LLMConfig
 
 
 class AgentOrchestrator:
@@ -362,3 +363,72 @@ class AgentOrchestrator:
         print("="*60)
 
         return list(set(all_modified_files))
+
+
+def run_negotiation(
+    artifacts_dir: str,
+    llm_config: LLMConfig,
+    safety_config: SafetyConfig,
+    user_intent: str = None,
+    verbose: bool = False
+) -> dict:
+    """
+    Run negotiation on existing build artifacts.
+
+    This is a standalone function that can be called by the negotiate command
+    to run agent negotiation without rebuilding the project.
+
+    Args:
+        artifacts_dir: Path to .graphbus artifacts directory
+        llm_config: LLM configuration
+        safety_config: Safety configuration
+        user_intent: Optional user intent/goal
+        verbose: Enable verbose output
+
+    Returns:
+        Dict with negotiation results
+    """
+    print(f"\n[Negotiation] Loading artifacts from {artifacts_dir}...")
+
+    # Load artifacts
+    try:
+        artifacts = BuildArtifacts.load(artifacts_dir)
+    except Exception as e:
+        raise ValueError(f"Failed to load artifacts: {e}")
+
+    print(f"[Negotiation] Loaded {len(artifacts.agents)} agents")
+    for agent in artifacts.agents:
+        print(f"  - {agent.name}")
+
+    # Create LLM client
+    llm_client = LLMClient(
+        model=llm_config.model,
+        api_key=llm_config.api_key
+    )
+
+    # Create orchestrator
+    orchestrator = AgentOrchestrator(
+        agent_definitions=artifacts.agents,
+        agent_graph=artifacts.graph,
+        llm_client=llm_client,
+        safety_config=safety_config,
+        user_intent=user_intent
+    )
+
+    # Run orchestration
+    modified_files = orchestrator.run()
+
+    # Save updated artifacts with new negotiations
+    artifacts.negotiations = orchestrator.negotiation_engine.get_all_commits()
+    artifacts.modified_files = modified_files
+    artifacts.save(artifacts_dir)
+
+    # Return results
+    return {
+        "rounds_completed": orchestrator.negotiation_engine.current_round + 1,
+        "total_proposals": len(orchestrator.negotiation_engine.proposals),
+        "accepted_proposals": len(artifacts.negotiations),
+        "files_changed": len(set(modified_files)),
+        "modified_files": modified_files,
+        "negotiations": artifacts.negotiations
+    }

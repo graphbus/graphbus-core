@@ -191,33 +191,21 @@ def negotiate(
             arbiter_agents=arbiter_list
         )
 
-        # TODO: Import and call negotiation function from graphbus_core
-        # This will be implemented when the orchestrator exposes a standalone negotiate function
-        print_info("Loading agents from artifacts...")
-
-        # For now, show what would happen
-        console.print("[yellow]⚠[/yellow] Negotiation functionality coming soon!")
-        console.print()
-        print_info("This command will:")
-        console.print("  1. Load agent definitions from artifacts")
-        console.print("  2. Activate agents with LLM capabilities")
-        console.print("  3. Run multi-round negotiation")
-        console.print("  4. Apply accepted proposals")
-        console.print("  5. Save negotiation history")
+        # Run negotiation
+        print_info("Starting negotiation...")
         console.print()
 
-        # TODO: Once implemented:
-        # from graphbus_core.build.orchestrator import run_negotiation
-        # results = run_negotiation(
-        #     artifacts_dir=str(graphbus_dir),
-        #     llm_config=llm_config,
-        #     safety_config=safety_config,
-        #     user_intent=intent,
-        #     verbose=verbose
-        # )
-        # _display_negotiation_summary(results)
+        from graphbus_core.build.orchestrator import run_negotiation
 
-        print_info(f"Would negotiate with artifacts in: {graphbus_dir}/")
+        results = run_negotiation(
+            artifacts_dir=str(graphbus_dir),
+            llm_config=llm_config,
+            safety_config=safety_config,
+            user_intent=intent,
+            verbose=verbose
+        )
+
+        _display_negotiation_summary(results)
 
     except Exception as e:
         console.print()
