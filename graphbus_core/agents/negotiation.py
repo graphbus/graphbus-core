@@ -23,6 +23,10 @@ class NegotiationEngine:
         """
         Initialize negotiation engine.
 
+        Each negotiation session gets a fresh engine instance, so all counters
+        start at 0. This ensures the max_total_file_changes limit (default 10)
+        applies per negotiation session, not across multiple sessions.
+
         Args:
             safety_config: Safety configuration with limits and guardrails
             user_intent: User's goal or intent for the negotiation
@@ -35,7 +39,7 @@ class NegotiationEngine:
         self.current_round = 0
         self.proposal_counts: Dict[str, int] = {}  # Track proposals per agent
         self.rounds_without_proposals = 0  # Track convergence
-        self.total_files_modified = 0  # Track total file changes
+        self.total_files_modified = 0  # Resets to 0 for each new negotiation session
         self.reconciliation: Dict = {}  # Store arbiter reconciliation results
 
     def can_agent_propose(self, agent_name: str) -> tuple[bool, str]:

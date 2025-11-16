@@ -472,10 +472,14 @@ def run_negotiation(
     This is a standalone function that can be called by the negotiate command
     to run agent negotiation without rebuilding the project.
 
+    IMPORTANT: Creates a fresh AgentOrchestrator and NegotiationEngine for
+    each call, ensuring all counters (total_files_modified, proposal_counts, etc.)
+    reset to 0 for each negotiation session.
+
     Args:
         artifacts_dir: Path to .graphbus artifacts directory
         llm_config: LLM configuration
-        safety_config: Safety configuration
+        safety_config: Safety configuration (max_total_file_changes defaults to 10)
         user_intent: Optional user intent/goal
         verbose: Enable verbose output
 
@@ -500,7 +504,7 @@ def run_negotiation(
         api_key=llm_config.api_key
     )
 
-    # Create orchestrator
+    # Create orchestrator (fresh instance with counters at 0)
     orchestrator = AgentOrchestrator(
         agent_definitions=artifacts.agents,
         agent_graph=artifacts.graph,
@@ -508,6 +512,9 @@ def run_negotiation(
         safety_config=safety_config,
         user_intent=user_intent
     )
+
+    print(f"[Negotiation] Safety limits: max_file_changes={safety_config.max_total_file_changes}, max_rounds={safety_config.max_negotiation_rounds}")
+    print(f"[Negotiation] Counters initialized: files_modified=0, proposals=0")
 
     # Run orchestration
     modified_files = orchestrator.run()
