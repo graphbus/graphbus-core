@@ -10,6 +10,8 @@ from graphbus_core.agents.agent import LLMAgent
 from graphbus_core.agents.negotiation import NegotiationEngine
 from graphbus_core.build.code_writer import CodeWriter
 from graphbus_core.build.artifacts import BuildArtifacts
+from graphbus_core.build.refactoring import RefactoringValidator
+from graphbus_core.build.contract_validator import ContractValidator
 from graphbus_core.model.message import CommitRecord
 from graphbus_core.config import SafetyConfig, LLMConfig
 
@@ -52,6 +54,8 @@ class AgentOrchestrator:
         self.agents: Dict[str, LLMAgent] = {}
         self.negotiation_engine = NegotiationEngine(safety_config=self.safety_config, user_intent=user_intent)
         self.code_writer = CodeWriter(dry_run=False)
+        self.refactoring_validator = RefactoringValidator()
+        self.contract_validator = ContractValidator()
 
     def activate_agents(self) -> None:
         """
@@ -277,6 +281,90 @@ class AgentOrchestrator:
         """
         return self.code_writer.apply_commits(commits)
 
+    def reload_agent_source_code(self, modified_files: List[str]) -> None:
+        """
+        Reload agent source code after modifications.
+
+        This ensures agents see cumulative changes in subsequent rounds,
+        preventing duplicate proposals.
+
+        Args:
+            modified_files: List of file paths that were modified
+        """
+        print(f"\n[Orchestrator] Reloading source code for modified agents...")
+
+        for file_path in modified_files:
+            # Find which agent owns this file
+            for agent_name, agent in self.agents.items():
+                if agent.agent_def.source_file == file_path:
+                    try:
+                        # Read updated source
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            new_source = f.read()
+
+                        # Update agent definition
+                        agent.agent_def.source_code = new_source
+                        agent.code_line_count = len(new_source.split('\n'))
+
+                        print(f"  ↻ Reloaded {agent_name} ({agent.code_line_count} lines)")
+
+                    except Exception as e:
+                        print(f"  Warning: Could not reload {agent_name}: {e}")
+
+    def run_refactoring_validation_phase(self) -> None:
+        """
+        Validate code across all agents for refactoring opportunities.
+
+        Detects:
+        - Code duplication across agents
+        - Methods that should be extracted to shared modules
+        - Complexity violations
+        """
+        print("\n[Orchestrator] Running refactoring validation...")
+
+        # Collect all agent source code
+        agent_sources = {
+            agent_name: agent.agent_def.source_code
+            for agent_name, agent in self.agents.items()
+        }
+
+        # Detect duplication across agents
+        duplications = self.refactoring_validator.detect_duplication_across_agents(agent_sources)
+
+        if duplications:
+            print(f"\n[Orchestrator] ⚠️  Found {len(duplications)} code duplications:")
+            for dup in duplications:
+                print(f"  • {dup['method_name']} duplicated in {dup['agent1']} and {dup['agent2']}")
+                print(f"    Similarity: {dup['similarity']:.0%}, Lines: {dup['lines']}")
+
+            # Get extraction suggestions
+            suggestions = self.refactoring_validator.suggest_extraction(duplications)
+
+            if suggestions:
+                print(f"\n[Orchestrator] 💡 Refactoring suggestions:")
+                for suggestion in suggestions:
+                    print(f"  • Extract {suggestion['method_name']} → {suggestion['suggested_module']}.py")
+                    print(f"    Affects: {', '.join(suggestion['affected_agents'])}")
+        else:
+            print("[Orchestrator] ✓ No code duplication detected")
+
+        # Validate individual agent code
+        for agent_name, agent in self.agents.items():
+            validation = self.refactoring_validator.validate_source_code(
+                agent.agent_def.source_code,
+                agent_name
+            )
+
+            if validation['violations']:
+                print(f"\n[Orchestrator] ⚠️  {agent_name} refactoring issues:")
+                for violation in validation['violations']:
+                    print(f"    - {violation}")
+
+            if validation['suggestions']:
+                print(f"  💡 Suggestions:")
+                for suggestion in validation['suggestions']:
+                    print(f"    - {suggestion}")
+
     def run(self) -> List[str]:
         """
         Run the full multi-round agent orchestration:
@@ -347,6 +435,12 @@ class AgentOrchestrator:
             if commits:
                 modified_files = self.apply_code_changes(commits)
                 all_modified_files.extend(modified_files)
+
+                # Reload agent source code for next round
+                self.reload_agent_source_code(modified_files)
+
+                # Run refactoring validation after changes
+                self.run_refactoring_validation_phase()
             else:
                 print("[Orchestrator] No commits to apply this round")
 

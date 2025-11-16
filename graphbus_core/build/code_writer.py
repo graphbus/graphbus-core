@@ -5,6 +5,8 @@ Code writer - applies agent-agreed changes to source files
 import os
 from typing import List
 from graphbus_core.model.message import CommitRecord
+from graphbus_core.build.contract_validator import ContractValidator
+from graphbus_core.build.refactoring import RefactoringValidator
 
 
 class CodeWriter:
@@ -16,15 +18,21 @@ class CodeWriter:
     - Backs up original files
     """
 
-    def __init__(self, dry_run: bool = False):
+    def __init__(self, dry_run: bool = False, enforce_contracts: bool = True, enforce_refactoring: bool = True):
         """
         Initialize code writer.
 
         Args:
             dry_run: If True, don't actually write files (for testing)
+            enforce_contracts: If True, validate API contracts before applying changes
+            enforce_refactoring: If True, validate refactoring improvements
         """
         self.dry_run = dry_run
+        self.enforce_contracts = enforce_contracts
+        self.enforce_refactoring = enforce_refactoring
         self.modified_files: List[str] = []
+        self.contract_validator = ContractValidator()
+        self.refactoring_validator = RefactoringValidator()
 
     def apply_commits(self, commits: List[CommitRecord]) -> List[str]:
         """
@@ -75,6 +83,60 @@ class CodeWriter:
         # Apply the change
         old_code = commit.resolution.get("old_code", "")
         new_code = commit.resolution.get("new_code", "")
+
+        # Get agent name from commit
+        agent_name = commit.proposal_id.split('_')[0] if commit.proposal_id else "unknown"
+
+        # Validate contract compatibility (if old and new code provided)
+        if self.enforce_contracts and old_code and new_code:
+            # Check if changes would break contracts
+            # We validate that the new code maintains backward compatibility
+            try:
+                import ast
+                old_tree = ast.parse(content)
+
+                # Compute what the new content would be
+                test_new_content = content.replace(old_code, new_code, 1)
+                new_tree = ast.parse(test_new_content)
+
+                # Extract method signatures from both versions
+                old_methods = self._extract_method_names(old_tree)
+                new_methods = self._extract_method_names(new_tree)
+
+                # Check for removed public methods
+                removed_methods = old_methods - new_methods
+                removed_public = [m for m in removed_methods if not m.startswith('_')]
+
+                if removed_public:
+                    print(f"  ✗ REJECTED: Contract violation - public methods removed: {removed_public}")
+                    return
+
+            except SyntaxError:
+                # If we can't parse, skip contract validation
+                pass
+
+        # Validate refactoring quality
+        if self.enforce_refactoring and old_code and new_code:
+            refactoring_result = self.refactoring_validator.validate_refactoring_proposal(
+                old_code, new_code, agent_name
+            )
+
+            if not refactoring_result['valid']:
+                print(f"  ✗ REJECTED: Refactoring validation failed")
+                print(f"    Reason: {refactoring_result.get('regressions', [])}")
+                return
+
+            if refactoring_result.get('regressions'):
+                print(f"  ⚠️  Refactoring regressions detected:")
+                for regression in refactoring_result['regressions']:
+                    print(f"    - {regression}")
+                print(f"  ✗ REJECTED: Code quality would degrade")
+                return
+
+            if refactoring_result.get('improvements'):
+                print(f"  ✓ Refactoring improvements:")
+                for improvement in refactoring_result['improvements']:
+                    print(f"    + {improvement}")
 
         if not old_code:
             print(f"  Warning: Commit {commit.commit_id} has no old_code, skipping")
@@ -127,3 +189,12 @@ class CodeWriter:
                     with open(file_path, 'w', encoding='utf-8') as f:
                         f.write(original)
                     print(f"  Restored from backup")
+
+    def _extract_method_names(self, tree) -> set:
+        """Extract all method names from an AST tree."""
+        import ast
+        methods = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                methods.add(node.name)
+        return methods
