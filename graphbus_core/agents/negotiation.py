@@ -36,6 +36,7 @@ class NegotiationEngine:
         self.proposal_counts: Dict[str, int] = {}  # Track proposals per agent
         self.rounds_without_proposals = 0  # Track convergence
         self.total_files_modified = 0  # Track total file changes
+        self.reconciliation: Dict = {}  # Store arbiter reconciliation results
 
     def can_agent_propose(self, agent_name: str) -> tuple[bool, str]:
         """

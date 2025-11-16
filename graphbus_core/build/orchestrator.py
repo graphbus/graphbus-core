@@ -172,6 +172,78 @@ class AgentOrchestrator:
                 except Exception as e:
                     print(f"    Warning: Proposal failed: {e}")
 
+    def run_reconciliation_phase(self) -> dict:
+        """
+        Arbiter reconciles all proposals holistically before individual evaluations.
+
+        This phase allows the arbiter to:
+        - Review all proposals together
+        - Identify conflicts or overlaps
+        - Provide priority and guidance
+        - Recommend which proposals should proceed
+
+        Returns:
+            Reconciliation data with recommendations
+        """
+        print("\n[Orchestrator] Running reconciliation phase...")
+
+        # Get all proposals
+        proposals = list(self.negotiation_engine.proposals.values())
+
+        if not proposals:
+            print("[Orchestrator] No proposals to reconcile")
+            return {}
+
+        # Find arbiter agent
+        arbiter_agents = [a for a in self.agents.values() if a.is_arbiter]
+
+        if not arbiter_agents:
+            print("[Orchestrator] No arbiter configured, skipping reconciliation")
+            return {}
+
+        arbiter = arbiter_agents[0]
+        print(f"[Orchestrator] Arbiter {arbiter.name} reconciling {len(proposals)} proposals...")
+
+        try:
+            reconciliation = arbiter.reconcile_all_proposals(proposals, user_intent=self.user_intent)
+
+            # Display reconciliation results
+            print(f"\n[Orchestrator] Reconciliation complete:")
+            print(f"  Overall: {reconciliation.get('overall_assessment', 'N/A')}")
+
+            conflicts = reconciliation.get('conflicts', [])
+            if conflicts:
+                print(f"\n  Conflicts identified ({len(conflicts)}):")
+                for conflict in conflicts:
+                    print(f"    - {conflict.get('issue', 'N/A')}")
+                    print(f"      Proposals: {conflict.get('proposals', [])}")
+
+            recommendations = reconciliation.get('recommendations', {})
+            if recommendations:
+                print(f"\n  Recommendations:")
+                for prop_id, rec in recommendations.items():
+                    action = rec.get('action', 'proceed')
+                    priority = rec.get('priority', 3)
+                    reasoning = rec.get('reasoning', 'N/A')
+
+                    symbol = "✓" if action == "proceed" else ("⚠" if action == "modify" else "✗")
+                    print(f"    {symbol} {prop_id}: {action.upper()} (priority: {priority})")
+                    print(f"       {reasoning}")
+
+            modifications = reconciliation.get('suggested_modifications', [])
+            if modifications:
+                print(f"\n  Suggested modifications ({len(modifications)}):")
+                for mod in modifications:
+                    print(f"    - {mod.get('proposal', 'N/A')}: {mod.get('suggestion', 'N/A')}")
+
+            # Store reconciliation in negotiation engine for later use
+            self.negotiation_engine.reconciliation = reconciliation
+            return reconciliation
+
+        except Exception as e:
+            print(f"[Orchestrator] Warning: Reconciliation failed: {e}")
+            return {}
+
     def run_negotiation_round(self) -> List[CommitRecord]:
         """
         Run one round of negotiation:
@@ -261,6 +333,10 @@ class AgentOrchestrator:
                     break
             else:
                 self.negotiation_engine.rounds_without_proposals = 0
+
+            # Reconciliation phase (if arbiter exists and new proposals were made)
+            if new_proposals > 0:
+                self.run_reconciliation_phase()
 
             # Negotiation & commits
             commits = self.run_negotiation_round()

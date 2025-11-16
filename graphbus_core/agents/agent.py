@@ -330,6 +330,89 @@ Should you accept this proposal? Return ONLY a JSON object:
                 confidence=0.5
             )
 
+    def reconcile_all_proposals(
+        self,
+        proposals: list[Proposal],
+        user_intent: str = None
+    ) -> dict:
+        """
+        Arbiter reviews all proposals holistically and reconciles what each agent should do.
+
+        This happens BEFORE individual evaluations, allowing the arbiter to:
+        - Identify conflicts or overlaps between proposals
+        - Ensure proposals align with user intent
+        - Suggest modifications or prioritization
+        - Recommend which proposals should proceed
+
+        Args:
+            proposals: All proposals from all agents
+            user_intent: User's stated goal/intent
+
+        Returns:
+            Dict with reconciliation decisions for each proposal
+        """
+        if not self.is_arbiter:
+            raise ValueError(f"Agent {self.name} is not configured as an arbiter")
+
+        # Build summary of all proposals
+        proposal_summary = []
+        for prop in proposals:
+            proposal_summary.append(
+                f"- {prop.proposal_id} from {prop.src}: {prop.intent}\n"
+                f"  Target: {prop.code_change.target} in {prop.code_change.file_path}\n"
+                f"  Reason: {prop.reason}"
+            )
+
+        intent_context = ""
+        if user_intent:
+            intent_context = f"\n\nUSER INTENT: {user_intent}\nEnsure reconciliation aligns with this intent."
+
+        prompt = f"""
+You are acting as an arbiter to reconcile {len(proposals)} proposals from different agents.
+
+PROPOSALS:
+{chr(10).join(proposal_summary)}
+{intent_context}
+
+Review all proposals holistically and provide reconciliation guidance:
+1. Identify any conflicts or overlaps between proposals
+2. Determine priority order if proposals affect related code
+3. Suggest modifications to avoid conflicts
+4. Recommend which proposals should proceed and which should be deferred
+
+Return ONLY a JSON object:
+{{
+  "overall_assessment": "brief summary of the proposals as a whole",
+  "conflicts": [
+    {{"proposals": ["prop_id1", "prop_id2"], "issue": "description of conflict"}}
+  ],
+  "recommendations": {{
+    "prop_id1": {{"action": "proceed|defer|modify", "reasoning": "why", "priority": 1-5}},
+    "prop_id2": {{"action": "proceed|defer|modify", "reasoning": "why", "priority": 1-5}}
+  }},
+  "suggested_modifications": [
+    {{"proposal": "prop_id", "suggestion": "what to change"}}
+  ]
+}}
+"""
+
+        try:
+            response = self.llm.generate(prompt, system=self.system_prompt + "\n\nYou are an impartial arbiter reconciling proposals.")
+            reconciliation_data = json.loads(response)
+            return reconciliation_data
+        except Exception as e:
+            print(f"Warning: Arbiter {self.name} reconciliation failed: {e}")
+            # Return safe default - allow all to proceed
+            return {
+                "overall_assessment": "Reconciliation failed, proceeding with all proposals",
+                "conflicts": [],
+                "recommendations": {
+                    prop.proposal_id: {"action": "proceed", "reasoning": "Default", "priority": 3}
+                    for prop in proposals
+                },
+                "suggested_modifications": []
+            }
+
     def arbitrate_conflict(
         self,
         proposal: Proposal,
