@@ -94,10 +94,13 @@ def negotiate(
       - Incremental improvements after initial build
       - Experiment with agent interactions
       - Iterate on improvements after manual code changes
+      - Guide improvements with specific user intent
 
     \b
     Examples:
       graphbus negotiate .graphbus --rounds 5
+      graphbus negotiate .graphbus --intent "optimize performance"
+      graphbus negotiate .graphbus --intent "improve error handling" --arbiter-agent CoreAgent
       graphbus negotiate .graphbus --llm-model gpt-4-turbo
       graphbus negotiate .graphbus --rounds 3 --max-proposals-per-agent 3
       graphbus negotiate .graphbus --protected-files agents/core.py
@@ -106,11 +109,29 @@ def negotiate(
     How It Works:
       1. Load agents from build artifacts
       2. Activate agents as LLM agents
-      3. Each agent analyzes code and proposes improvements
-      4. Agents evaluate each other's proposals
-      5. Arbiter resolves conflicts if needed
-      6. Accepted proposals are committed to files
-      7. Repeat for N rounds or until convergence
+      3. Agents check intent relevance and code size
+      4. Each agent analyzes code and proposes improvements
+      5. Arbiter reconciles all proposals holistically (if configured)
+      6. Agents evaluate each other's proposals
+      7. Arbiter resolves conflicts if needed
+      8. Accepted proposals are committed to files
+      9. Repeat for N rounds or until convergence
+
+    \b
+    NEW: User Intent Integration
+      Use --intent to guide agent improvements toward a specific goal.
+      Agents will:
+        - Check if intent is relevant to their scope
+        - Focus improvements on the stated goal
+        - Suggest new agents if intent doesn't match any existing agent
+
+    \b
+    NEW: Arbiter Reconciliation
+      When an arbiter is configured, it reviews ALL proposals together:
+        - Identifies conflicts before evaluation
+        - Provides priority recommendations
+        - Suggests modifications to align proposals
+        - Ensures proposals work together harmoniously
 
     \b
     Output:

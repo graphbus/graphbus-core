@@ -115,6 +115,8 @@ def build(
       graphbus build agents/ --validate         # Validate after build
       graphbus build agents/ -v                 # Verbose output
       graphbus build agents/ --enable-agents    # Build with LLM agent orchestration
+      graphbus build agents/ --enable-agents --intent "optimize performance"
+      graphbus build agents/ --enable-agents --arbiter-agent CoreAgent
       graphbus build agents/ --enable-agents --llm-model claude-sonnet-4 --max-negotiation-rounds 5
 
     \b
@@ -129,11 +131,31 @@ def build(
     \b
     Agent Orchestration:
       When --enable-agents is enabled, agents become active LLM agents that can:
+        - Check intent relevance and code size (100-line threshold)
         - Analyze their own code for improvements
         - Propose code changes with rationale
+        - Reconcile proposals through arbiter (if configured)
         - Evaluate other agents' proposals
         - Negotiate through multiple rounds until convergence
       This enables autonomous agent collaboration for codebase improvement.
+
+    \b
+    NEW Features:
+      --intent: Guide improvements toward specific goals
+        - Agents check if intent matches their scope
+        - Focus analysis on stated goal
+        - Warn if no agent handles intent (suggests new agent)
+
+      Intelligent Checks:
+        - Code size warnings for agents > 100 lines
+        - Refactoring suggestions for large agents
+        - New agent suggestions when subdividing
+
+      Arbiter Reconciliation (--arbiter-agent):
+        - Reviews ALL proposals holistically before evaluation
+        - Identifies conflicts and overlaps
+        - Provides priority recommendations
+        - Suggests modifications for alignment
     """
     try:
         agents_path = Path(agents_dir).resolve()
