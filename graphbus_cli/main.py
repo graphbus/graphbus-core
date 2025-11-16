@@ -21,6 +21,10 @@ def cli(ctx):
     Build, run, and manage agent graphs with event-driven communication.
 
     \b
+    Interactive UI:
+      tui       - Launch interactive text-based UI (NEW!)
+
+    \b
     Core Commands:
       build     - Build agent graphs from source
       run       - Run an agent graph runtime
@@ -50,6 +54,7 @@ def cli(ctx):
 
     \b
     Examples:
+      graphbus tui                          # Launch interactive UI
       graphbus init my-project              # Create new project
       graphbus generate agent OrderProcessor  # Generate agent code
       graphbus build agents/                # Build agents from directory
@@ -85,6 +90,7 @@ from graphbus_cli.commands.ci import ci
 from graphbus_cli.commands.contract import contract
 from graphbus_cli.commands.migrate import migrate
 from graphbus_cli.commands.coherence import coherence
+from graphbus_cli.commands.tui import tui
 
 cli.add_command(build)
 cli.add_command(run)
@@ -104,6 +110,7 @@ cli.add_command(ci)
 cli.add_command(contract)
 cli.add_command(migrate)
 cli.add_command(coherence)
+cli.add_command(tui)
 
 
 def main():

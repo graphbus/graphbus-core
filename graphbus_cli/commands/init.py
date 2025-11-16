@@ -17,7 +17,7 @@ from graphbus_cli.templates import get_template, list_templates
 @click.argument('project_name')
 @click.option(
     '--template',
-    type=click.Choice(['basic', 'microservices', 'etl'], case_sensitive=False),
+    type=click.Choice(['basic', 'chatbot', 'workflow', 'microservices', 'etl'], case_sensitive=False),
     default='basic',
     help='Project template to use'
 )
@@ -43,12 +43,16 @@ def init(project_name: str, template: str, output_dir: str, force: bool):
     \b
     Available Templates:
       basic         - Simple 3-agent example (recommended for beginners)
+      chatbot       - LLM-powered chatbot with specialized agents
+      workflow      - Approval workflow with multiple stages
       microservices - Multi-service architecture with API gateway
       etl           - Data pipeline with extractors, transformers, loaders
 
     \b
     Examples:
       graphbus init my-project                    # Create basic project
+      graphbus init my-bot --template chatbot
+      graphbus init my-workflow --template workflow
       graphbus init my-app --template microservices
       graphbus init pipeline --template etl --output-dir ~/projects
     """

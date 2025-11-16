@@ -7,3 +7,6 @@ pytest-cov>=4.0.0
 click>=8.1.0
 rich>=13.0.0
 PyYAML>=6.0
+
+# TUI dependencies (optional)
+textual>=0.47.0

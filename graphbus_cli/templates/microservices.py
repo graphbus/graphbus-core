@@ -27,31 +27,124 @@ class MicroservicesTemplate(Template):
         (agents_dir / "services").mkdir(exist_ok=True)
 
         # Gateway agent - simplified
-        gateway_agent = '''from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, method, subscribes
+        gateway_agent = '''"""
+API Gateway - Routes API requests to microservices
+"""
 
-@agent(name="APIGateway", description="Routes API requests")
-class APIGateway(NodeBase):
-    @method(description="Handle request", parameters={"path": "str"}, return_type="dict")
-    def handle_request(self, path: str) -> dict:
+from graphbus_core import GraphBusNode, schema_method, subscribe
+
+
+class APIGateway(GraphBusNode):
+    """API Gateway that routes requests to appropriate microservices"""
+
+    SYSTEM_PROMPT = """
+    You route API requests to appropriate microservices.
+    In Build Mode with agent orchestration enabled, you can negotiate with other
+    agents about routing strategies, load balancing, authentication, and API versioning.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.request_count = 0
+
+    @schema_method(
+        input_schema={"path": str, "method": str},
+        output_schema={"status": str, "service": str, "request_id": int}
+    )
+    def handle_request(self, path: str, method: str = "GET") -> dict:
+        """Route API request to appropriate service"""
+        self.request_count += 1
+
         if path.startswith("/users"):
-            self.publish("/service/user/request", {"path": path})
-        return {"status": "routed"}
+            service = "UserService"
+            self.publish("/service/user/request", {
+                "path": path,
+                "method": method,
+                "request_id": self.request_count
+            })
+        elif path.startswith("/orders"):
+            service = "OrderService"
+            self.publish("/service/order/request", {
+                "path": path,
+                "method": method,
+                "request_id": self.request_count
+            })
+        else:
+            service = "Unknown"
+
+        return {
+            "status": "routed",
+            "service": service,
+            "request_id": self.request_count
+        }
+
+    @schema_method(
+        input_schema={},
+        output_schema={"total_requests": int}
+    )
+    def get_stats(self) -> dict:
+        """Get gateway statistics"""
+        return {"total_requests": self.request_count}
 '''
 
         # User service - simplified
-        user_service = '''from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, method, subscribes
+        user_service = '''"""
+User Service - Manages user data
+"""
 
-@agent(name="UserService", description="Manages users")
-class UserService(NodeBase):
+from graphbus_core import GraphBusNode, subscribe, schema_method
+
+
+class UserService(GraphBusNode):
+    """Microservice that manages user data"""
+
+    SYSTEM_PROMPT = """
+    You manage user data and handle user-related operations.
+    In Build Mode with agent orchestration enabled, you can negotiate with other
+    agents about data schemas, validation rules, caching strategies, and security policies.
+    """
+
     def __init__(self):
         super().__init__()
         self.users = {}
+        self.request_count = 0
 
-    @subscribes("/service/user/request")
-    def on_user_request(self, payload):
-        self.publish("/service/user/response", {"status": "ok"})
+    @subscribe("/service/user/request")
+    def on_user_request(self, event: dict):
+        """Handle user service requests"""
+        self.request_count += 1
+        path = event.get("path", "")
+        method = event.get("method", "GET")
+        request_id = event.get("request_id")
+
+        # Simple demo response
+        response = {
+            "status": "ok",
+            "service": "UserService",
+            "request_id": request_id,
+            "data": {"user_count": len(self.users)}
+        }
+        self.publish("/service/user/response", response)
+
+    @schema_method(
+        input_schema={"user_id": str, "name": str},
+        output_schema={"id": str, "name": str, "created": bool}
+    )
+    def create_user(self, user_id: str, name: str) -> dict:
+        """Create a new user"""
+        self.users[user_id] = {"name": name}
+        return {"id": user_id, "name": name, "created": True}
+
+    @schema_method(
+        input_schema={},
+        output_schema={"user_count": int, "request_count": int}
+    )
+    def get_stats(self) -> dict:
+        """Get service statistics"""
+        return {
+            "user_count": len(self.users),
+            "request_count": self.request_count
+        }
 '''
 
         self._write_file(agents_dir / "gateway" / "__init__.py", "")

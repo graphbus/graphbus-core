@@ -24,53 +24,145 @@ class WorkflowTemplate(Template):
         agents_dir = project_path / "agents"
 
         # Workflow initiator
-        initiator = '''from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, method
+        initiator = '''"""
+Workflow Initiator - Starts approval workflows
+"""
 
-@agent(name="WorkflowInitiator", description="Starts approval workflows")
-class WorkflowInitiator(NodeBase):
-    @method(description="Submit request", parameters={"title": "str", "content": "str"}, return_type="dict")
+from graphbus_core import GraphBusNode, schema_method
+
+
+class WorkflowInitiator(GraphBusNode):
+    """Agent that initiates approval workflows"""
+
+    SYSTEM_PROMPT = """
+    You initiate and manage approval workflows.
+    In Build Mode with agent orchestration enabled, you can negotiate with other
+    agents about workflow structures, validation rules, and submission policies.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.request_counter = 0
+
+    @schema_method(
+        input_schema={"title": str, "content": str},
+        output_schema={"id": int, "title": str, "content": str, "status": str}
+    )
     def submit_request(self, title: str, content: str) -> dict:
-        request = {"id": 1, "title": title, "content": content, "status": "pending"}
+        """Submit a new approval request"""
+        self.request_counter += 1
+        request = {
+            "id": self.request_counter,
+            "title": title,
+            "content": content,
+            "status": "pending"
+        }
         self.publish("/workflow/submitted", request)
         return request
+
+    @schema_method(
+        input_schema={},
+        output_schema={"total_requests": int}
+    )
+    def get_stats(self) -> dict:
+        """Get workflow statistics"""
+        return {"total_requests": self.request_counter}
 '''
 
         # Approval agent
-        approver = '''from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, subscribes
+        approver = '''"""
+Approval Agent - Reviews and approves requests
+"""
 
-@agent(name="ApprovalAgent", description="Reviews and approves requests")
-class ApprovalAgent(NodeBase):
+from graphbus_core import GraphBusNode, subscribe, schema_method
+
+
+class ApprovalAgent(GraphBusNode):
+    """Agent that reviews and approves workflow requests"""
+
+    SYSTEM_PROMPT = """
+    You review and approve or reject workflow requests.
+    In Build Mode with agent orchestration enabled, you can negotiate with other
+    agents about approval criteria, escalation policies, and decision-making logic.
+    """
+
     def __init__(self):
         super().__init__()
         self.pending_requests = {}
+        self.approved_count = 0
+        self.rejected_count = 0
 
-    @subscribes("/workflow/submitted")
-    def on_workflow_submitted(self, payload):
-        request_id = payload.get("id")
-        self.pending_requests[request_id] = payload
-        # Auto-approve for demo
-        approved = {**payload, "status": "approved", "approver": "ApprovalAgent"}
+    @subscribe("/workflow/submitted")
+    def on_workflow_submitted(self, event: dict):
+        """Handle new workflow submissions"""
+        request_id = event.get("id")
+        self.pending_requests[request_id] = event
+
+        # Auto-approve for demo (would have real approval logic in production)
+        self.approved_count += 1
+        approved = {
+            **event,
+            "status": "approved",
+            "approver": "ApprovalAgent"
+        }
         self.publish("/workflow/approved", approved)
+
+    @schema_method(
+        input_schema={},
+        output_schema={"approved": int, "rejected": int, "pending": int}
+    )
+    def get_approval_stats(self) -> dict:
+        """Get approval statistics"""
+        return {
+            "approved": self.approved_count,
+            "rejected": self.rejected_count,
+            "pending": len(self.pending_requests)
+        }
 '''
 
         # Notification agent
-        notifier = '''from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, subscribes
+        notifier = '''"""
+Notification Agent - Sends workflow notifications
+"""
 
-@agent(name="NotificationAgent", description="Sends workflow notifications")
-class NotificationAgent(NodeBase):
-    @subscribes("/workflow/approved")
-    def on_workflow_approved(self, payload):
-        title = payload.get("title", "Unknown")
-        print(f"NOTIFICATION: Request '{title}' has been approved")
-        self.publish("/workflow/completed", payload)
+from graphbus_core import GraphBusNode, subscribe, schema_method
 
-    @subscribes("/workflow/rejected")
-    def on_workflow_rejected(self, payload):
-        title = payload.get("title", "Unknown")
-        print(f"NOTIFICATION: Request '{title}' has been rejected")
+
+class NotificationAgent(GraphBusNode):
+    """Agent that sends notifications about workflow events"""
+
+    SYSTEM_PROMPT = """
+    You send notifications about workflow status changes.
+    In Build Mode with agent orchestration enabled, you can negotiate with other
+    agents about notification channels, formats, and delivery schedules.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.notification_count = 0
+
+    @subscribe("/workflow/approved")
+    def on_workflow_approved(self, event: dict):
+        """Notify when workflow is approved"""
+        self.notification_count += 1
+        title = event.get("title", "Unknown")
+        print(f"[NOTIFICATION #{self.notification_count}] Request '{title}' has been approved")
+        self.publish("/workflow/completed", event)
+
+    @subscribe("/workflow/rejected")
+    def on_workflow_rejected(self, event: dict):
+        """Notify when workflow is rejected"""
+        self.notification_count += 1
+        title = event.get("title", "Unknown")
+        print(f"[NOTIFICATION #{self.notification_count}] Request '{title}' has been rejected")
+
+    @schema_method(
+        input_schema={},
+        output_schema={"total_notifications": int}
+    )
+    def get_stats(self) -> dict:
+        """Get notification statistics"""
+        return {"total_notifications": self.notification_count}
 '''
 
         self._write_file(agents_dir / "initiator.py", initiator)

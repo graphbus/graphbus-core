@@ -39,35 +39,39 @@ class BasicTemplate(Template):
 Hello Agent - Generates greetings
 """
 
-from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, method, subscribes
+from graphbus_core import GraphBusNode, schema_method
 
 
-@agent(
-    name="HelloAgent",
-    description="Generates personalized greetings"
-)
-class HelloAgent(NodeBase):
+class HelloAgent(GraphBusNode):
     """Agent that generates greetings"""
+
+    SYSTEM_PROMPT = """
+    You generate personalized greeting messages.
+    In Build Mode with agent orchestration enabled, you can negotiate with other
+    agents to improve greeting formats, add personalization, or enhance the user experience.
+    """
 
     def __init__(self):
         super().__init__()
         self.greeting_count = 0
 
-    @method(
-        description="Generate a greeting message",
-        parameters={"name": "str"},
-        return_type="str"
+    @schema_method(
+        input_schema={"name": str},
+        output_schema={"message": str, "count": int}
     )
-    def generate_greeting(self, name: str) -> str:
+    def generate_greeting(self, name: str) -> dict:
         """Generate a personalized greeting"""
         self.greeting_count += 1
-        return f"Hello, {name}! This is greeting #{self.greeting_count}"
+        message = f"Hello, {name}! This is greeting #{self.greeting_count}"
+        return {"message": message, "count": self.greeting_count}
 
-    @subscribes("/system/start")
-    def on_system_start(self, payload):
-        """Handle system start event"""
-        self.publish("/hello/ready", {"agent": "HelloAgent", "status": "ready"})
+    @schema_method(
+        input_schema={},
+        output_schema={"total_greetings": int}
+    )
+    def get_stats(self) -> dict:
+        """Get greeting statistics"""
+        return {"total_greetings": self.greeting_count}
 '''
         self._write_file(project_path / "agents" / "hello_agent.py", content)
 
@@ -77,31 +81,46 @@ class HelloAgent(NodeBase):
 Processor Agent - Processes greetings
 """
 
-from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, method, subscribes
+from graphbus_core import GraphBusNode, schema_method, subscribe
 
 
-@agent(
-    name="ProcessorAgent",
-    description="Processes and transforms greetings"
-)
-class ProcessorAgent(NodeBase):
+class ProcessorAgent(GraphBusNode):
     """Agent that processes greetings"""
 
-    @subscribes("/hello/ready")
-    def on_hello_ready(self, payload):
-        """Handle hello ready event"""
-        print(f"Received: {payload}")
-        self.publish("/processor/ready", {"agent": "ProcessorAgent", "status": "ready"})
+    SYSTEM_PROMPT = """
+    You process and transform greeting messages.
+    In Build Mode with agent orchestration, you can propose improvements to message
+    processing algorithms, suggest new transformations, or optimize performance.
+    """
 
-    @method(
-        description="Process a greeting message",
-        parameters={"message": "str"},
-        return_type="str"
+    def __init__(self):
+        super().__init__()
+        self.processed_count = 0
+
+    @subscribe("/greetings/generated")
+    def on_greeting_generated(self, event: dict):
+        """Handle greeting generation events"""
+        message = event.get("message", "")
+        print(f"[ProcessorAgent] Received greeting: {message}")
+
+        # Process and publish transformed message
+        processed = self.process(message)
+        self.publish("/greetings/processed", {
+            "original": message,
+            "processed": processed
+        })
+
+    @schema_method(
+        input_schema={"message": str},
+        output_schema={"result": str, "count": int}
     )
-    def process(self, message: str) -> str:
+    def process(self, message: str) -> dict:
         """Process and transform a greeting"""
-        return message.upper()
+        self.processed_count += 1
+        return {
+            "result": message.upper(),
+            "count": self.processed_count
+        }
 '''
         self._write_file(project_path / "agents" / "processor_agent.py", content)
 
@@ -111,28 +130,45 @@ class ProcessorAgent(NodeBase):
 Logger Agent - Logs messages
 """
 
-from graphbus_core.node_base import NodeBase
-from graphbus_core.decorators import agent, subscribes
+from graphbus_core import GraphBusNode, subscribe, schema_method
 
 
-@agent(
-    name="LoggerAgent",
-    description="Logs all system events"
-)
-class LoggerAgent(NodeBase):
+class LoggerAgent(GraphBusNode):
     """Agent that logs events"""
+
+    SYSTEM_PROMPT = """
+    You log all system events for monitoring and debugging.
+    In Build Mode with agent orchestration, you can negotiate about what events
+    should be logged, log formats, retention policies, and integration with
+    monitoring systems.
+    """
 
     def __init__(self):
         super().__init__()
         self.log_count = 0
 
-    @subscribes("/hello/ready")
-    @subscribes("/processor/ready")
-    def on_agent_ready(self, payload):
-        """Log when agents become ready"""
+    @subscribe("/greetings/generated")
+    def on_greeting_generated(self, event: dict):
+        """Log when a greeting is generated"""
         self.log_count += 1
-        agent_name = payload.get("agent", "Unknown")
-        print(f"[LOG #{self.log_count}] Agent ready: {agent_name}")
+        message = event.get("message", "Unknown")
+        print(f"[LOG #{self.log_count}] Greeting generated: {message}")
+
+    @subscribe("/greetings/processed")
+    def on_greeting_processed(self, event: dict):
+        """Log when a greeting is processed"""
+        self.log_count += 1
+        original = event.get("original", "Unknown")
+        processed = event.get("processed", "Unknown")
+        print(f"[LOG #{self.log_count}] Processed: {original} -> {processed}")
+
+    @schema_method(
+        input_schema={},
+        output_schema={"total_logs": int}
+    )
+    def get_log_count(self) -> dict:
+        """Get total number of logs"""
+        return {"total_logs": self.log_count}
 '''
         self._write_file(project_path / "agents" / "logger_agent.py", content)
 
