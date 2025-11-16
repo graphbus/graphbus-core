@@ -74,6 +74,16 @@ Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
+            # Strip markdown code fences if present
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]  # Remove ```json
+            if response.startswith('```'):
+                response = response[3:]  # Remove ```
+            if response.endswith('```'):
+                response = response[:-3]  # Remove trailing ```
+            response = response.strip()
+
             relevance_data = json.loads(response)
             return relevance_data
         except Exception as e:
@@ -116,6 +126,16 @@ Analyze the code and suggest how to refactor it. Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
+            # Strip markdown code fences if present
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
+
             refactor_data = json.loads(response)
             refactor_data["exceeds_threshold"] = True
             refactor_data["line_count"] = self.code_line_count
@@ -164,6 +184,16 @@ Keep it simple and practical.
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
+            # Strip markdown code fences if present
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
+
             # Try to parse JSON response
             analysis = json.loads(response)
             self.memory.store("code_analysis", analysis)
@@ -224,6 +254,15 @@ Make the change minimal and focused. The old_code must be an exact match.
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
+            # Strip markdown code fences if present
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
 
             # Try to parse JSON
             change_data = json.loads(response)
@@ -307,6 +346,16 @@ Should you accept this proposal? Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
+            # Strip markdown code fences if present
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
+
             eval_data = json.loads(response)
 
             return ProposalEvaluation(
@@ -398,6 +447,16 @@ Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt + "\n\nYou are an impartial arbiter reconciling proposals.")
+            # Strip markdown code fences if present
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
+
             reconciliation_data = json.loads(response)
             return reconciliation_data
         except Exception as e:
@@ -477,6 +536,16 @@ Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt + "\n\nYou are an impartial arbiter.")
+            # Strip markdown code fences if present
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
+
             arbiter_data = json.loads(response)
 
             return ProposalEvaluation(

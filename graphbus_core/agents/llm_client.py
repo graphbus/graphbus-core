@@ -67,9 +67,16 @@ class LLMClient:
 
             # Extract text from response
             if message.content and len(message.content) > 0:
-                return message.content[0].text
-            return ""
+                response_text = message.content[0].text
+                # Debug: Print first 200 chars of response for troubleshooting
+                # print(f"[LLM Response Preview]: {response_text[:200]}...")
+                return response_text
+            else:
+                print(f"Warning: Empty response from LLM. Message: {message}")
+                return ""
 
         except Exception as e:
             print(f"Error calling Anthropic API: {e}")
+            import traceback
+            traceback.print_exc()
             raise
