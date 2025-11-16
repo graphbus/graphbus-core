@@ -53,8 +53,10 @@ def extract_single_agent(
     # Read full source code
     full_source = read_source_code(source_file)
 
-    # Extract just this class's source
-    class_source = extract_class_source(full_source, class_obj.__name__)
+    # Use FULL source code instead of just the class
+    # This allows agents to see and reason about their entire file,
+    # including imports, helper functions, and any code added by negotiation
+    class_source = full_source  # Changed: agents now see full file context
 
     # Extract system prompt
     system_prompt_text = class_obj.get_system_prompt()
