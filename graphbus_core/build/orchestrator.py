@@ -94,12 +94,15 @@ class AgentOrchestrator:
                 agent_def = self.agent_definitions[agent_name]
                 agent = LLMAgent(
                     agent_def=agent_def,
-                    llm_client=self.llm_client
+                    llm_client=self.llm_client,
+                    user_intent=self.user_intent  # Pass user intent to agent
                 )
                 self.agents[agent_name] = agent
                 print(f"  ✓ Activated {agent_name}")
 
         print(f"[Orchestrator] {len(self.agents)} agents activated")
+        if self.user_intent:
+            print(f"[Orchestrator] All agents aware of user intent: \"{self.user_intent}\"")
 
     def run_analysis_phase(self) -> None:
         """

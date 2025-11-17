@@ -33,7 +33,8 @@ class LLMAgent(GraphBusNode):
         self,
         agent_def: AgentDefinition,
         llm_client: LLMClient,
-        memory: Optional[NodeMemory] = None
+        memory: Optional[NodeMemory] = None,
+        user_intent: str = None
     ):
         """
         Initialize the LLM agent.
@@ -42,6 +43,7 @@ class LLMAgent(GraphBusNode):
             agent_def: AgentDefinition with source code and system prompt
             llm_client: LLM client for API calls
             memory: Agent memory (optional)
+            user_intent: Optional user intent/goal to guide agent behavior
         """
         # Initialize GraphBusNode base class
         super().__init__(bus=None, memory=memory or NodeMemory())
@@ -53,12 +55,13 @@ class LLMAgent(GraphBusNode):
         self.name = agent_def.name
         self.agent_def = agent_def
         self.llm = llm_client
+        self.user_intent = user_intent  # Store for later use
 
         # Combine base GraphBusNode collaboration protocol with agent-specific prompt
         base_protocol = GraphBusNode.SYSTEM_PROMPT
         agent_specific_prompt = agent_def.system_prompt.text
 
-        # Build combined system prompt
+        # Build combined system prompt with user intent if provided
         if agent_specific_prompt:
             self.system_prompt = f"""{base_protocol}
 
@@ -70,11 +73,41 @@ class LLMAgent(GraphBusNode):
 
 ---
 
-Remember: Apply both the collaboration protocol above AND your specific role instructions below when participating in negotiation.
 """
+            # Add user intent section if provided
+            if user_intent:
+                self.system_prompt += f"""# User Intent/Goal
+
+The user has specified the following goal for this negotiation:
+
+**{user_intent}**
+
+Keep this goal in mind when:
+- Analyzing your code
+- Proposing improvements
+- Evaluating other agents' proposals
+- Asking clarifying questions
+
+All your actions should align with and support this user intent.
+
+---
+
+"""
+            self.system_prompt += "Remember: Apply both the collaboration protocol above AND your specific role instructions when participating in negotiation."
         else:
             # If no agent-specific prompt, just use the base protocol
             self.system_prompt = base_protocol
+            if user_intent:
+                self.system_prompt += f"""
+
+---
+
+# User Intent/Goal
+
+**{user_intent}**
+
+All your actions should align with and support this user intent.
+"""
 
         self.is_arbiter = agent_def.is_arbiter
         self.proposal_count = 0  # Track number of proposals made
