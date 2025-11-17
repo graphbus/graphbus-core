@@ -13,9 +13,9 @@ class HelloService(GraphBusNode):
     """
 
     @schema_method(
-        input_schema={"name": str},
+        input_schema={},
         output_schema={"message": str}
     )
-    def generate_message(self, name="World"):
-        """Generate a personalized greeting message."""
-        return {"message": f"Hello, {name}!"}
+    def generate_message(self):
+        """Generate a simple greeting message."""
+        return {"message": "Hello, World!"}

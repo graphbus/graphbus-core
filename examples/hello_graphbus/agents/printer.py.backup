@@ -18,7 +18,5 @@ class PrinterService(GraphBusNode):
     )
     def print_message(self, message: str):
         """Print a message to the console."""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{timestamp}] {message}")
+        print(message)
         return {}

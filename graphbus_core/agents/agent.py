@@ -187,6 +187,76 @@ Analyze the code and suggest how to refactor it. Return ONLY a JSON object:
                 "potential_new_agents": []
             }
 
+    def generate_clarifying_questions(self, user_intent: str) -> list:
+        """
+        Generate intelligent clarifying questions for the user based on intent and agent scope.
+
+        This allows agents to gather more context before making proposals, leading to
+        better, more production-ready solutions.
+
+        Args:
+            user_intent: User's stated goal or intent
+
+        Returns:
+            List of question dicts with structure:
+            {
+                "question": "The question to ask",
+                "options": ["option1", "option2", ...],
+                "context": "Why this question matters",
+                "agent": "Which agent is asking"
+            }
+        """
+        prompt = f"""
+You are {self.name}. Here is your code:
+
+```python
+{self.agent_def.source_code}
+```
+
+User Intent: {user_intent}
+
+Generate 1-3 intelligent clarifying questions that would help you implement this intent better.
+Questions should be:
+- Specific and actionable
+- Related to edge cases, production concerns, or design choices
+- Something the user needs to decide (not something you can infer)
+
+Return ONLY a JSON array:
+[
+  {{
+    "question": "How should the system handle X edge case?",
+    "options": ["Option A with trade-offs", "Option B with trade-offs", "Option C"],
+    "context": "Why this matters for production deployment",
+    "importance": "critical" or "nice-to-have"
+  }},
+  ...
+]
+
+If no questions are needed, return an empty array: []
+"""
+
+        try:
+            response = self.llm.generate(prompt, system=self.system_prompt)
+            # Strip markdown code fences
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
+
+            questions = json.loads(response)
+            # Add agent name to each question
+            for q in questions:
+                q['agent'] = self.name
+
+            return questions
+        except Exception as e:
+            print(f"Warning: Agent {self.name} question generation failed: {e}")
+            return []
+
     def analyze_code(self, user_intent: str = None) -> dict:
         """
         Use LLM to analyze the agent's own code.

@@ -178,6 +178,50 @@ class AgentOrchestrator:
                 print(f"[Orchestrator] Intent: {self.user_intent}")
                 print("[Orchestrator] Consider creating a new agent with this responsibility.")
 
+    def collect_clarifying_questions(self) -> list:
+        """
+        Collect clarifying questions from relevant agents to surface to user.
+
+        This allows agents to ask production-ready questions about edge cases,
+        design choices, and requirements before making proposals.
+
+        Returns:
+            List of question dicts ready for AskUserQuestion tool
+        """
+        if not self.user_intent:
+            return []
+
+        print("\n[Orchestrator] Collecting clarifying questions from agents...")
+
+        all_questions = []
+
+        # Only ask relevant agents for questions
+        for agent_name, agent in self.agents.items():
+            # Check if agent found intent relevant
+            relevance = self.intent_relevance_results.get(agent_name, {})
+            if not relevance.get("relevant", False):
+                continue
+
+            try:
+                questions = agent.generate_clarifying_questions(self.user_intent)
+                if questions:
+                    print(f"  {agent_name}: {len(questions)} question(s)")
+                    all_questions.extend(questions)
+            except Exception as e:
+                print(f"  Warning: {agent_name} question generation failed: {e}")
+
+        if all_questions:
+            print(f"\n[Orchestrator] Collected {len(all_questions)} total questions")
+            # Prioritize critical questions
+            critical = [q for q in all_questions if q.get('importance') == 'critical']
+            nice_to_have = [q for q in all_questions if q.get('importance') != 'critical']
+
+            # Return up to 4 questions (tool limit), critical first
+            return (critical + nice_to_have)[:4]
+        else:
+            print("[Orchestrator] No clarifying questions needed")
+            return []
+
     def run_proposal_phase(self) -> None:
         """
         Each agent proposes improvements based on its analysis.
@@ -698,3 +742,61 @@ def run_negotiation(
         }
 
     return result
+
+
+def collect_agent_questions(
+    artifacts_dir: str,
+    llm_config: LLMConfig,
+    user_intent: str,
+    project_root: str = "."
+) -> list:
+    """
+    Collect clarifying questions from agents before running negotiation.
+
+    This allows agents to ask production-ready questions about edge cases,
+    design choices, and requirements, leading to better implementations.
+
+    Args:
+        artifacts_dir: Path to .graphbus artifacts directory
+        llm_config: LLM configuration
+        user_intent: User's goal or intent
+        project_root: Root directory of the project
+
+    Returns:
+        List of question dicts formatted for AskUserQuestion tool
+    """
+    print(f"\n[Questions] Asking agents for clarifying questions...")
+
+    # Load artifacts
+    try:
+        artifacts = BuildArtifacts.load(artifacts_dir)
+    except Exception as e:
+        raise ValueError(f"Failed to load artifacts: {e}")
+
+    # Create LLM client
+    llm_client = LLMClient(
+        model=llm_config.model,
+        api_key=llm_config.api_key
+    )
+
+    # Create lightweight orchestrator just for analysis
+    orchestrator = AgentOrchestrator(
+        agent_definitions=artifacts.agents,
+        agent_graph=artifacts.graph,
+        llm_client=llm_client,
+        safety_config=SafetyConfig(),
+        user_intent=user_intent,
+        project_root=project_root,
+        enable_git_workflow=False  # No git needed for questions
+    )
+
+    # Activate agents
+    orchestrator.activate_agents()
+
+    # Run analysis phase (checks intent relevance)
+    orchestrator.run_analysis_phase()
+
+    # Collect questions from relevant agents
+    questions = orchestrator.collect_clarifying_questions()
+
+    return questions

@@ -15,6 +15,4 @@ class LoggerService(GraphBusNode):
     @subscribe("/Hello/MessageGenerated")
     def on_message_generated(self, event):
         """Handle message generated events."""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[LOG] [{timestamp}] Greeting generated: {event.get('message', 'unknown')}")
+        print(f"[LOG] Greeting generated: {event.get('message', 'unknown')}")

@@ -228,6 +228,88 @@ def negotiate(
             arbiter_agents=arbiter_list
         )
 
+        # Collect clarifying questions from agents (if intent provided)
+        enhanced_intent = intent
+        if intent:
+            print_info("Collecting clarifying questions from agents...")
+            console.print()
+
+            from graphbus_core.build.orchestrator import collect_agent_questions
+
+            try:
+                questions = collect_agent_questions(
+                    artifacts_dir=str(graphbus_dir),
+                    llm_config=llm_config,
+                    user_intent=intent,
+                    project_root=project_root
+                )
+
+                if questions:
+                    console.print(f"\n[yellow]✨ Agents have {len(questions)} clarifying question(s)[/yellow]\n")
+
+                    # Ask each question interactively
+                    answers = []
+                    for i, q in enumerate(questions, 1):
+                        console.print(f"[bold cyan]Question {i}/{len(questions)} from {q['agent']}:[/bold cyan]")
+                        console.print(f"{q['question']}")
+
+                        if q.get('context'):
+                            console.print(f"[dim]Context: {q['context']}[/dim]")
+
+                        console.print()
+                        options = q.get('options', [])
+
+                        # Display options
+                        for idx, opt in enumerate(options, 1):
+                            console.print(f"  {idx}. {opt}")
+
+                        console.print()
+
+                        # Get user choice
+                        while True:
+                            try:
+                                choice = click.prompt(
+                                    "Your answer (enter number or custom text)",
+                                    type=str,
+                                    default="1"
+                                )
+
+                                # Try to parse as number
+                                try:
+                                    choice_idx = int(choice) - 1
+                                    if 0 <= choice_idx < len(options):
+                                        answer = options[choice_idx]
+                                    else:
+                                        answer = choice
+                                except ValueError:
+                                    answer = choice
+
+                                answers.append({
+                                    "question": q['question'],
+                                    "answer": answer,
+                                    "agent": q['agent']
+                                })
+                                break
+                            except (KeyboardInterrupt, click.Abort):
+                                console.print("\n[yellow]Skipping remaining questions...[/yellow]")
+                                break
+
+                        console.print()
+
+                    if answers:
+                        # Enhance intent with answers
+                        enhanced_intent = f"{intent}\n\nUser Clarifications:\n"
+                        for a in answers:
+                            enhanced_intent += f"- [{a['agent']}] {a['question']}\n  → {a['answer']}\n"
+
+                        print_success(f"✓ Received {len(answers)} answer(s) - agents will use this context")
+                        console.print()
+
+            except Exception as e:
+                if verbose:
+                    print_info(f"Note: Could not collect questions: {e}")
+                console.print()
+
         # Run negotiation
         print_info("Starting negotiation...")
         if not no_git:
@@ -240,7 +322,7 @@ def negotiate(
             artifacts_dir=str(graphbus_dir),
             llm_config=llm_config,
             safety_config=safety_config,
-            user_intent=intent,
+            user_intent=enhanced_intent,  # Use enhanced intent with answers
             verbose=verbose,
             project_root=project_root,
             enable_git_workflow=not no_git
