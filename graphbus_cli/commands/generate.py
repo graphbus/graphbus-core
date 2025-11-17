@@ -64,8 +64,20 @@ def generate():
     default=True,
     help='Generate unit test file (default: True)'
 )
+@click.option(
+    '--namespace',
+    type=str,
+    help='Namespace/module for the agent (e.g., "services.core", "agents.processing")'
+)
+@click.option(
+    '--depends-on',
+    'dependencies',
+    multiple=True,
+    help='Agent dependencies (can be specified multiple times, e.g., --depends-on DataValidator --depends-on Logger)'
+)
 def agent(agent_name: str, subscribes: tuple, publishes: tuple, methods: tuple,
-          output_dir: str, with_llm: bool, with_state: bool, with_tests: bool):
+          output_dir: str, with_llm: bool, with_state: bool, with_tests: bool,
+          namespace: str, dependencies: tuple):
     """
     Generate a new agent class with decorators and method stubs.
 
@@ -114,7 +126,9 @@ def agent(agent_name: str, subscribes: tuple, publishes: tuple, methods: tuple,
             publishes=list(publishes),
             methods=list(methods),
             with_llm=with_llm,
-            with_state=with_state
+            with_state=with_state,
+            namespace=namespace,
+            dependencies=list(dependencies)
         )
 
         # Write to file
@@ -162,7 +176,8 @@ def _snake_case(name: str) -> str:
 
 
 def _generate_agent_code(agent_name: str, subscribes: List[str], publishes: List[str],
-                          methods: List[str], with_llm: bool, with_state: bool) -> str:
+                          methods: List[str], with_llm: bool, with_state: bool,
+                          namespace: str = None, dependencies: List[str] = None) -> str:
     """Generate agent code"""
     lines = []
 
@@ -188,7 +203,12 @@ def _generate_agent_code(agent_name: str, subscribes: List[str], publishes: List
     # Agent decorator
     lines.append(f'@agent(')
     lines.append(f'    name="{agent_name}",')
-    lines.append(f'    description="TODO: Add agent description"')
+    if namespace:
+        lines.append(f'    namespace="{namespace}",')
+    lines.append(f'    description="TODO: Add agent description"{"," if dependencies else ""}')
+    if dependencies:
+        deps_str = ', '.join([f'"{dep}"' for dep in dependencies])
+        lines.append(f'    dependencies=[{deps_str}]')
     lines.append(f')')
 
     # Class definition
@@ -197,7 +217,15 @@ def _generate_agent_code(agent_name: str, subscribes: List[str], publishes: List
     lines.append('')
     lines.append('    SYSTEM_PROMPT = """')
     lines.append(f'    You are a {agent_name} agent.')
+    if namespace:
+        lines.append(f'    Namespace: {namespace}')
     lines.append('    TODO: Describe your role and capabilities.')
+    if dependencies:
+        lines.append('')
+        lines.append('    Dependencies:')
+        for dep in dependencies:
+            lines.append(f'    - {dep}: TODO: Describe relationship')
+    lines.append('')
     lines.append('    In Build Mode, you can negotiate with other agents to improve')
     lines.append('    TODO: describe what aspects of the system you can improve.')
     lines.append('    """')
