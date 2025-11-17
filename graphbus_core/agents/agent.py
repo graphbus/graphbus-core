@@ -45,7 +45,29 @@ class LLMAgent(GraphBusNode):
         self.name = agent_def.name
         self.agent_def = agent_def
         self.llm = llm_client
-        self.system_prompt = agent_def.system_prompt.text
+
+        # Combine base GraphBusNode collaboration protocol with agent-specific prompt
+        base_protocol = GraphBusNode.SYSTEM_PROMPT
+        agent_specific_prompt = agent_def.system_prompt.text
+
+        # Build combined system prompt
+        if agent_specific_prompt:
+            self.system_prompt = f"""{base_protocol}
+
+---
+
+# Agent-Specific Instructions for {agent_def.name}
+
+{agent_specific_prompt}
+
+---
+
+Remember: Apply both the collaboration protocol above AND your specific role instructions below when participating in negotiation.
+"""
+        else:
+            # If no agent-specific prompt, just use the base protocol
+            self.system_prompt = base_protocol
+
         self.is_arbiter = agent_def.is_arbiter
         self.proposal_count = 0  # Track number of proposals made
         self.code_line_count = len(agent_def.source_code.split('\n'))
