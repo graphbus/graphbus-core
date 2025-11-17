@@ -9,6 +9,14 @@ from graphbus_core.node_base import GraphBusNode
 from graphbus_core.model.agent_def import AgentDefinition, NodeMemory
 from graphbus_core.model.message import Proposal, ProposalEvaluation, CodeChange, generate_id
 from graphbus_core.agents.llm_client import LLMClient
+from graphbus_core.exceptions import (
+    IntentRelevanceError,
+    CodeAnalysisError,
+    ProposalGenerationError,
+    EvaluationError,
+    LLMResponseError
+)
+from graphbus_core.utils import parse_json_from_llm_response, validate_json_structure
 
 
 class LLMAgent(GraphBusNode):
@@ -112,19 +120,16 @@ Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
-            # Strip markdown code fences if present
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]  # Remove ```json
-            if response.startswith('```'):
-                response = response[3:]  # Remove ```
-            if response.endswith('```'):
-                response = response[:-3]  # Remove trailing ```
-            response = response.strip()
+            relevance_data = parse_json_from_llm_response(response, context=f"{self.name} intent relevance")
 
-            relevance_data = json.loads(response)
+            # Validate required keys
+            validate_json_structure(relevance_data, ["relevant", "reasoning"], context="Intent relevance response")
+
             return relevance_data
-        except Exception as e:
+        except LLMResponseError as e:
+            print(f"Warning: Agent {self.name} intent relevance check failed: {e}")
+            return {"relevant": False, "reasoning": "LLM response error", "confidence": 0.0}
+        except IntentRelevanceError as e:
             print(f"Warning: Agent {self.name} intent relevance check failed: {e}")
             return {"relevant": False, "reasoning": "Check failed", "confidence": 0.0}
 
@@ -164,26 +169,28 @@ Analyze the code and suggest how to refactor it. Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
-            # Strip markdown code fences if present
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
+            refactor_data = parse_json_from_llm_response(response, context=f"{self.name} code size check")
 
-            refactor_data = json.loads(response)
+            # Validate required keys
+            validate_json_structure(refactor_data, ["suggestions"], context="Code size check response")
+
             refactor_data["exceeds_threshold"] = True
             refactor_data["line_count"] = self.code_line_count
             return refactor_data
-        except Exception as e:
+        except LLMResponseError as e:
             print(f"Warning: Agent {self.name} size check failed: {e}")
             return {
                 "exceeds_threshold": True,
                 "line_count": self.code_line_count,
                 "suggestions": ["Consider breaking into smaller agents"],
+                "potential_new_agents": []
+            }
+        except CodeAnalysisError as e:
+            print(f"Warning: Agent {self.name} size check failed: {e}")
+            return {
+                "exceeds_threshold": True,
+                "line_count": self.code_line_count,
+                "suggestions": ["Analysis failed - manual review needed"],
                 "potential_new_agents": []
             }
 
@@ -237,23 +244,25 @@ If no questions are needed, return an empty array: []
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
-            # Strip markdown code fences
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
 
-            questions = json.loads(response)
+            # Parse JSON (could be array or object)
+            parsed = parse_json_from_llm_response(response, context=f"{self.name} question generation")
+
+            # Ensure it's a list
+            if isinstance(parsed, dict):
+                questions = [parsed]
+            elif isinstance(parsed, list):
+                questions = parsed
+            else:
+                questions = []
+
             # Add agent name to each question
             for q in questions:
-                q['agent'] = self.name
+                if isinstance(q, dict):
+                    q['agent'] = self.name
 
             return questions
-        except Exception as e:
+        except LLMResponseError as e:
             print(f"Warning: Agent {self.name} question generation failed: {e}")
             return []
 
@@ -292,27 +301,21 @@ Keep it simple and practical.
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
-            # Strip markdown code fences if present
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
+            analysis = parse_json_from_llm_response(response, context=f"{self.name} code analysis")
 
-            # Try to parse JSON response
-            analysis = json.loads(response)
+            # Validate structure
+            if not isinstance(analysis, dict):
+                raise LLMResponseError(f"Expected dict, got {type(analysis).__name__}")
+
             self.memory.store("code_analysis", analysis)
             return analysis
-        except json.JSONDecodeError:
-            # Fallback if LLM doesn't return valid JSON
+        except LLMResponseError as e:
+            print(f"Warning: Agent {self.name} analysis failed - LLM response error: {e}")
             return {
-                "summary": "Code analysis completed",
+                "summary": "Analysis failed - invalid response",
                 "potential_improvements": []
             }
-        except Exception as e:
+        except CodeAnalysisError as e:
             print(f"Warning: Agent {self.name} analysis failed: {e}")
             return {
                 "summary": "Analysis failed",
@@ -362,18 +365,14 @@ Make the change minimal and focused. The old_code must be an exact match.
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
-            # Strip markdown code fences if present
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
+            change_data = parse_json_from_llm_response(response, context=f"{self.name} proposal generation")
 
-            # Try to parse JSON
-            change_data = json.loads(response)
+            # Validate required keys
+            validate_json_structure(
+                change_data,
+                ["old_code", "new_code"],
+                context="Proposal change data"
+            )
 
             # Create proposal
             code_change = CodeChange(
@@ -398,7 +397,10 @@ Make the change minimal and focused. The old_code must be an exact match.
 
             return proposal
 
-        except Exception as e:
+        except LLMResponseError as e:
+            print(f"Warning: Agent {self.name} failed to generate proposal - LLM response error: {e}")
+            return None
+        except ProposalGenerationError as e:
             print(f"Warning: Agent {self.name} failed to generate proposal: {e}")
             return None
 
@@ -454,30 +456,38 @@ Should you accept this proposal? Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt)
-            # Strip markdown code fences if present
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
+            eval_data = parse_json_from_llm_response(response, context=f"{self.name} proposal evaluation")
 
-            eval_data = json.loads(response)
+            # Validate required keys
+            validate_json_structure(eval_data, ["decision"], context="Proposal evaluation")
+
+            # Validate decision value
+            decision = eval_data.get("decision", "accept")
+            if decision not in ["accept", "reject"]:
+                print(f"Warning: Invalid decision '{decision}', defaulting to 'accept'")
+                decision = "accept"
 
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
                 evaluator=self.name,
                 round=round_num,
-                decision=eval_data.get("decision", "accept"),
+                decision=decision,
                 reasoning=eval_data.get("reasoning", "Evaluated by LLM"),
                 confidence=0.8
             )
 
-        except Exception as e:
+        except LLMResponseError as e:
+            print(f"Warning: Agent {self.name} evaluation failed - LLM response error: {e}, defaulting to accept")
+            return ProposalEvaluation(
+                proposal_id=proposal.proposal_id,
+                evaluator=self.name,
+                round=round_num,
+                decision="accept",
+                reasoning="Evaluation failed: LLM response error",
+                confidence=0.0
+            )
+        except EvaluationError as e:
             print(f"Warning: Agent {self.name} evaluation failed: {e}, defaulting to accept")
-            # Default to accept if evaluation fails
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
                 evaluator=self.name,
@@ -555,20 +565,15 @@ Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt + "\n\nYou are an impartial arbiter reconciling proposals.")
-            # Strip markdown code fences if present
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
+            reconciliation_data = parse_json_from_llm_response(response, context=f"Arbiter {self.name} reconciliation")
 
-            reconciliation_data = json.loads(response)
+            # Validate structure
+            if not isinstance(reconciliation_data, dict):
+                raise LLMResponseError(f"Expected dict, got {type(reconciliation_data).__name__}")
+
             return reconciliation_data
-        except Exception as e:
-            print(f"Warning: Arbiter {self.name} reconciliation failed: {e}")
+        except LLMResponseError as e:
+            print(f"Warning: Arbiter {self.name} reconciliation failed - LLM response error: {e}")
             # Return safe default - allow all to proceed
             return {
                 "overall_assessment": "Reconciliation failed, proceeding with all proposals",
@@ -644,34 +649,43 @@ Return ONLY a JSON object:
 
         try:
             response = self.llm.generate(prompt, system=self.system_prompt + "\n\nYou are an impartial arbiter.")
-            # Strip markdown code fences if present
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
+            arbiter_data = parse_json_from_llm_response(response, context=f"Arbiter {self.name} decision")
 
-            arbiter_data = json.loads(response)
+            # Validate required keys
+            validate_json_structure(arbiter_data, ["decision"], context="Arbiter decision")
+
+            # Validate decision value
+            decision = arbiter_data.get("decision", "reject")
+            if decision not in ["accept", "reject"]:
+                print(f"Warning: Invalid arbiter decision '{decision}', defaulting to 'reject'")
+                decision = "reject"
 
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
                 evaluator=f"{self.name} (ARBITER)",
                 round=round_num,
-                decision=arbiter_data.get("decision", "reject"),
+                decision=decision,
                 reasoning=f"[ARBITER] {arbiter_data.get('reasoning', 'Arbitrated')}",
                 confidence=1.0  # Arbiter decisions are final
             )
 
-        except Exception as e:
+        except LLMResponseError as e:
+            print(f"Warning: Arbiter {self.name} failed - LLM response error: {e}, defaulting to reject")
+            return ProposalEvaluation(
+                proposal_id=proposal.proposal_id,
+                evaluator=f"{self.name} (ARBITER)",
+                round=round_num,
+                decision="reject",
+                reasoning=f"[ARBITER] Arbitration failed: LLM response error",
+                confidence=0.5
+            )
+        except EvaluationError as e:
             print(f"Warning: Arbiter {self.name} failed: {e}, defaulting to reject")
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
                 evaluator=f"{self.name} (ARBITER)",
                 round=round_num,
                 decision="reject",
-                reasoning=f"[ARBITER] Arbitration failed: {e}",
+                reasoning=f"[ARBITER] Arbitration failed: {str(e)}",
                 confidence=0.5
             )

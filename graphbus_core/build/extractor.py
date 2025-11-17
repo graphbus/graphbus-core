@@ -4,6 +4,7 @@ Metadata extraction from GraphBusNode classes
 
 from typing import List, Tuple, Type, Optional, Dict, Any
 import inspect
+import ast
 
 from graphbus_core.node_base import GraphBusNode
 from graphbus_core.model.agent_def import AgentDefinition
@@ -32,6 +33,45 @@ def extract_agent_definitions(
         agent_definitions.append(agent_def)
 
     return agent_definitions
+
+
+def _extract_publish_topics(source_code: str) -> Dict[str, str]:
+    """
+    Extract topics that an agent publishes to from source code.
+
+    Parses the AST to find self.publish(topic, payload) calls and
+    extracts the topic string literals.
+
+    Args:
+        source_code: Python source code
+
+    Returns:
+        Dict mapping topic names to empty descriptions (for now)
+    """
+    try:
+        tree = ast.parse(source_code)
+    except SyntaxError:
+        return {}
+
+    publishes = {}
+
+    for node in ast.walk(tree):
+        # Look for self.publish(topic, payload) calls
+        if isinstance(node, ast.Call):
+            # Check if it's a method call
+            if isinstance(node.func, ast.Attribute):
+                # Check if it's self.publish
+                if (isinstance(node.func.value, ast.Name) and
+                    node.func.value.id == 'self' and
+                    node.func.attr == 'publish'):
+
+                    # Extract topic (first argument)
+                    if node.args and isinstance(node.args[0], ast.Constant):
+                        topic = node.args[0].value
+                        if isinstance(topic, str):
+                            publishes[topic] = ""  # TODO: Extract description from comments
+
+    return publishes
 
 
 def extract_single_agent(
@@ -230,11 +270,14 @@ def extract_contract_from_agent(class_obj: Type[GraphBusNode],
 
     # Auto-generate contract from schema methods
     if agent_def.methods or agent_def.subscriptions:
+        # Extract publish topics from source code
+        publishes = _extract_publish_topics(agent_def.source_code)
+
         return {
             'version': '1.0.0',  # Default version
             'schema': {
                 'methods': _generate_methods_schema(agent_def.methods),
-                'publishes': {},  # TODO: Extract from decorators
+                'publishes': publishes,  # Extracted from AST
                 'subscribes': [sub.topic.name for sub in agent_def.subscriptions],
                 'description': f'Auto-generated contract for {agent_def.name}'
             }

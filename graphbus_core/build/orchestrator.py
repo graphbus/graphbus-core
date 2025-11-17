@@ -15,6 +15,14 @@ from graphbus_core.build.contract_validator import ContractValidator
 from graphbus_core.build.negotiation_session import NegotiationSessionManager, GitWorkflowManager, NegotiationSession
 from graphbus_core.model.message import CommitRecord
 from graphbus_core.config import SafetyConfig, LLMConfig
+from graphbus_core.exceptions import (
+    IntentRelevanceError,
+    CodeAnalysisError,
+    LLMResponseError,
+    NegotiationError,
+    GitWorkflowError
+)
+from graphbus_core.utils import format_exception_for_user
 
 
 class AgentOrchestrator:
@@ -119,8 +127,8 @@ class AgentOrchestrator:
                     else:
                         print(f"    ✗ Intent NOT relevant (confidence: {relevance.get('confidence', 0):.2f})")
                         print(f"      Reason: {relevance.get('reasoning', 'N/A')}")
-                except Exception as e:
-                    print(f"    Warning: Intent relevance check failed: {e}")
+                except (IntentRelevanceError, LLMResponseError) as e:
+                    print(f"    Warning: Intent relevance check failed: {format_exception_for_user(e)}")
 
             # Check code size
             try:
@@ -138,8 +146,8 @@ class AgentOrchestrator:
                         print(f"      Potential new agents:")
                         for new_agent in new_agents[:2]:
                             print(f"        - {new_agent.get('name')}: {new_agent.get('responsibility')}")
-            except Exception as e:
-                print(f"    Warning: Code size check failed: {e}")
+            except (CodeAnalysisError, LLMResponseError) as e:
+                print(f"    Warning: Code size check failed: {format_exception_for_user(e)}")
 
             # Regular code analysis
             try:
@@ -161,8 +169,8 @@ class AgentOrchestrator:
                     print(f"    Found {len(improvements)} potential improvements:")
                     for imp in improvements[:3]:  # Show first 3
                         print(f"      - {imp}")
-            except Exception as e:
-                print(f"    Warning: Analysis failed: {e}")
+            except (CodeAnalysisError, LLMResponseError) as e:
+                print(f"    Warning: Analysis failed: {format_exception_for_user(e)}")
 
         # Store results in orchestrator for later use
         self.intent_relevance_results = intent_relevance_results
@@ -207,8 +215,8 @@ class AgentOrchestrator:
                 if questions:
                     print(f"  {agent_name}: {len(questions)} question(s)")
                     all_questions.extend(questions)
-            except Exception as e:
-                print(f"  Warning: {agent_name} question generation failed: {e}")
+            except LLMResponseError as e:
+                print(f"  Warning: {agent_name} question generation failed: {format_exception_for_user(e)}")
 
         if all_questions:
             print(f"\n[Orchestrator] Collected {len(all_questions)} total questions")
