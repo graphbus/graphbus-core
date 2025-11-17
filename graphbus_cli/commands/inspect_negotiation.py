@@ -87,9 +87,19 @@ def inspect_negotiation(artifacts_dir: str, format: str, round_num: int, agent_n
             return
 
         # Apply filters
-        proposals = negotiations.get('proposals', [])
-        evaluations = negotiations.get('evaluations', [])
-        commits = negotiations.get('commits', [])
+        # Handle both old format (list) and new format (dict)
+        if isinstance(negotiations, list):
+            proposals = negotiations  # Old format - list of proposals
+            evaluations = []
+            commits = []
+        elif isinstance(negotiations, dict):
+            proposals = negotiations.get('proposals', [])  # New format
+            evaluations = negotiations.get('evaluations', [])
+            commits = negotiations.get('commits', [])
+        else:
+            proposals = []
+            evaluations = []
+            commits = []
 
         if round_num is not None:
             proposals = [p for p in proposals if p.get('round') == round_num]
