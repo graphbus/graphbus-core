@@ -2,7 +2,7 @@
 Agent orchestrator - activates agents and runs negotiation
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from graphbus_core.model.agent_def import AgentDefinition
 from graphbus_core.model.graph import AgentGraph
 from graphbus_core.agents.llm_client import LLMClient
@@ -12,6 +12,7 @@ from graphbus_core.build.code_writer import CodeWriter
 from graphbus_core.build.artifacts import BuildArtifacts
 from graphbus_core.build.refactoring import RefactoringValidator
 from graphbus_core.build.contract_validator import ContractValidator
+from graphbus_core.build.negotiation_session import NegotiationSessionManager, GitWorkflowManager, NegotiationSession
 from graphbus_core.model.message import CommitRecord
 from graphbus_core.config import SafetyConfig, LLMConfig
 
@@ -33,7 +34,10 @@ class AgentOrchestrator:
         agent_graph: AgentGraph,
         llm_client: LLMClient,
         safety_config: SafetyConfig = None,
-        user_intent: str = None
+        user_intent: str = None,
+        project_root: str = ".",
+        session: Optional[NegotiationSession] = None,
+        enable_git_workflow: bool = True
     ):
         """
         Initialize orchestrator.
@@ -44,18 +48,29 @@ class AgentOrchestrator:
             llm_client: LLM client for agents
             safety_config: Safety configuration with limits
             user_intent: User's goal or intent for the negotiation
+            project_root: Root directory of the project
+            session: Optional pre-created negotiation session
+            enable_git_workflow: Enable git branch/PR workflow
         """
         self.agent_definitions = {a.name: a for a in agent_definitions}
         self.agent_graph = agent_graph
         self.llm_client = llm_client
         self.safety_config = safety_config or SafetyConfig()
         self.user_intent = user_intent
+        self.project_root = project_root
+        self.enable_git_workflow = enable_git_workflow
 
         self.agents: Dict[str, LLMAgent] = {}
         self.negotiation_engine = NegotiationEngine(safety_config=self.safety_config, user_intent=user_intent)
         self.code_writer = CodeWriter(dry_run=False)
         self.refactoring_validator = RefactoringValidator()
         self.contract_validator = ContractValidator()
+
+        # Git workflow integration
+        self.session_manager = NegotiationSessionManager(project_root=project_root)
+        self.git_workflow = GitWorkflowManager(project_root=project_root)
+        self.session = session
+        self.pr_feedback_context = None  # Will be populated if previous PR found
 
     def activate_agents(self) -> None:
         """
@@ -128,7 +143,19 @@ class AgentOrchestrator:
 
             # Regular code analysis
             try:
-                analysis = agent.analyze_code(user_intent=self.user_intent)
+                # Build enhanced context with PR feedback if available
+                analysis_context = self.user_intent
+                if self.pr_feedback_context:
+                    # Format PR feedback for agent
+                    feedback_summary = "\n\nDeveloper Feedback from Previous PR:\n"
+                    for comment in self.pr_feedback_context.get("comments", []):
+                        feedback_summary += f"- {comment['author']}: {comment['body']}\n"
+                    for review in self.pr_feedback_context.get("review_comments", []):
+                        feedback_summary += f"- {review['author']} ({review['state']}): {review['body']}\n"
+
+                    analysis_context = f"{self.user_intent}{feedback_summary}"
+
+                analysis = agent.analyze_code(user_intent=analysis_context)
                 improvements = analysis.get("potential_improvements", [])
                 if improvements:
                     print(f"    Found {len(improvements)} potential improvements:")
@@ -390,6 +417,44 @@ class AgentOrchestrator:
         print(f"        arbiter_on_conflict={self.safety_config.require_arbiter_on_conflict}")
         print("="*60)
 
+        # Stage 0: Git workflow setup (if enabled)
+        if self.enable_git_workflow:
+            # Check for previous PR sessions with related context
+            if self.user_intent:
+                intent_keywords = self.user_intent.split()[:3]  # Use first 3 words as keywords
+                previous_session = self.session_manager.get_latest_session_with_pr(intent_keywords)
+
+                if previous_session:
+                    print(f"\n[Context] Found previous session: {previous_session.session_id}")
+                    print(f"  PR: {previous_session.pr_url}")
+                    print(f"  Retrieving developer feedback...")
+
+                    self.pr_feedback_context = self.session_manager.get_pr_feedback_context(
+                        previous_session.session_id,
+                        self.git_workflow
+                    )
+
+                    if self.pr_feedback_context and (self.pr_feedback_context.get("comments") or self.pr_feedback_context.get("review_comments")):
+                        comment_count = len(self.pr_feedback_context.get("comments", []))
+                        review_count = len(self.pr_feedback_context.get("review_comments", []))
+                        print(f"  ✓ Retrieved {comment_count} comments, {review_count} reviews")
+                        print(f"  Agents will use this feedback during analysis")
+                    else:
+                        print(f"  No feedback found on previous PR")
+                        self.pr_feedback_context = None
+
+            # Create session if not provided
+            if not self.session:
+                intent = self.user_intent or "Agent-driven code improvements"
+                self.session = self.session_manager.create_session(intent)
+
+            # Create feature branch
+            original_branch = self.git_workflow.get_current_branch()
+            success = self.git_workflow.create_branch(self.session.branch_name, from_branch=original_branch)
+            if not success:
+                print(f"  ⚠️  Warning: Could not create git branch, continuing without git workflow")
+                self.enable_git_workflow = False
+
         # Stage 1: Activate agents
         self.activate_agents()
 
@@ -436,6 +501,26 @@ class AgentOrchestrator:
                 modified_files = self.apply_code_changes(commits)
                 all_modified_files.extend(modified_files)
 
+                # Record commits in session
+                if self.enable_git_workflow and self.session:
+                    for commit in commits:
+                        self.session_manager.record_commit(self.session.session_id, commit.to_dict())
+
+                # Commit to git branch
+                if self.enable_git_workflow and modified_files:
+                    commit_msg = f"Round {round_num + 1}: Apply {len(commits)} agent proposals\n\n"
+                    if self.user_intent:
+                        commit_msg += f"Intent: {self.user_intent}\n\n"
+                    commit_msg += f"- {len(modified_files)} files modified\n"
+                    commit_msg += f"- {len(commits)} commits applied"
+
+                    success = self.git_workflow.commit_changes(modified_files, commit_msg)
+                    if success:
+                        self.session_manager.update_session(
+                            self.session.session_id,
+                            modified_files=list(set(all_modified_files))
+                        )
+
                 # Reload agent source code for next round
                 self.reload_agent_source_code(modified_files)
 
@@ -456,7 +541,67 @@ class AgentOrchestrator:
         print(f"  Files modified: {len(set(all_modified_files))}")
         print("="*60)
 
+        # Stage 4: Create pull request (if git workflow enabled and changes were made)
+        if self.enable_git_workflow and self.session and all_modified_files:
+            # Push branch
+            push_success = self.git_workflow.push_branch(self.session.branch_name)
+
+            if push_success:
+                # Create PR
+                pr_title = self.user_intent or "Agent-driven code improvements"
+                pr_body = self._generate_pr_description(all_commits, all_modified_files)
+
+                pr_info = self.git_workflow.create_pr(
+                    branch_name=self.session.branch_name,
+                    title=pr_title,
+                    body=pr_body
+                )
+
+                if pr_info:
+                    # Update session with PR info
+                    self.session_manager.update_session(
+                        self.session.session_id,
+                        pr_number=pr_info['number'],
+                        pr_url=pr_info['url'],
+                        status="pr_created"
+                    )
+                    print(f"\n✓ Pull request created: {pr_info['url']}")
+                    print(f"  Session ID: {self.session.session_id}")
+                    print(f"  Tracked in: .graphbus/negotiations/{self.session.session_id}/")
+
         return list(set(all_modified_files))
+
+    def _generate_pr_description(self, commits: List[CommitRecord], modified_files: List[str]) -> str:
+        """Generate PR description from negotiation results"""
+        description = "# Agent Negotiation Results\n\n"
+
+        if self.user_intent:
+            description += f"## Intent\n{self.user_intent}\n\n"
+
+        description += f"## Summary\n"
+        description += f"- **Rounds completed**: {self.negotiation_engine.current_round + 1}\n"
+        description += f"- **Commits applied**: {len(commits)}\n"
+        description += f"- **Files modified**: {len(set(modified_files))}\n\n"
+
+        description += f"## Modified Files\n"
+        for file_path in sorted(set(modified_files)):
+            description += f"- `{file_path}`\n"
+
+        description += f"\n## Negotiation Details\n"
+        description += f"This PR was created by GraphBus Build Mode agent negotiation.\n"
+        description += f"Session ID: `{self.session.session_id if self.session else 'N/A'}`\n\n"
+
+        description += f"### Commit Breakdown\n"
+        for i, commit in enumerate(commits[:10], 1):  # Show first 10 commits
+            description += f"{i}. **{commit.proposer}**: {commit.proposal_id} ({commit.consensus_type})\n"
+
+        if len(commits) > 10:
+            description += f"\n_...and {len(commits) - 10} more commits_\n"
+
+        description += f"\n---\n"
+        description += f"🤖 Generated with [GraphBus](https://github.com/graphbusio/graphbus)\n"
+
+        return description
 
 
 def run_negotiation(
@@ -464,7 +609,9 @@ def run_negotiation(
     llm_config: LLMConfig,
     safety_config: SafetyConfig,
     user_intent: str = None,
-    verbose: bool = False
+    verbose: bool = False,
+    project_root: str = ".",
+    enable_git_workflow: bool = True
 ) -> dict:
     """
     Run negotiation on existing build artifacts.
@@ -482,6 +629,8 @@ def run_negotiation(
         safety_config: Safety configuration (max_total_file_changes defaults to 10)
         user_intent: Optional user intent/goal
         verbose: Enable verbose output
+        project_root: Root directory of the project (for .graphbus/ and git)
+        enable_git_workflow: Enable git branch/PR workflow
 
     Returns:
         Dict with negotiation results
@@ -510,11 +659,15 @@ def run_negotiation(
         agent_graph=artifacts.graph,
         llm_client=llm_client,
         safety_config=safety_config,
-        user_intent=user_intent
+        user_intent=user_intent,
+        project_root=project_root,
+        enable_git_workflow=enable_git_workflow
     )
 
     print(f"[Negotiation] Safety limits: max_file_changes={safety_config.max_total_file_changes}, max_rounds={safety_config.max_negotiation_rounds}")
     print(f"[Negotiation] Counters initialized: files_modified=0, proposals=0")
+    if enable_git_workflow:
+        print(f"[Negotiation] Git workflow: enabled (branch + PR)")
 
     # Run orchestration
     modified_files = orchestrator.run()
@@ -525,7 +678,7 @@ def run_negotiation(
     artifacts.save(artifacts_dir)
 
     # Return results
-    return {
+    result = {
         "rounds_completed": orchestrator.negotiation_engine.current_round + 1,
         "total_proposals": len(orchestrator.negotiation_engine.proposals),
         "accepted_proposals": len(artifacts.negotiations),
@@ -533,3 +686,15 @@ def run_negotiation(
         "modified_files": modified_files,
         "negotiations": artifacts.negotiations
     }
+
+    # Add session info if git workflow was used
+    if orchestrator.session:
+        result["session"] = {
+            "session_id": orchestrator.session.session_id,
+            "branch_name": orchestrator.session.branch_name,
+            "pr_number": orchestrator.session.pr_number,
+            "pr_url": orchestrator.session.pr_url,
+            "status": orchestrator.session.status
+        }
+
+    return result

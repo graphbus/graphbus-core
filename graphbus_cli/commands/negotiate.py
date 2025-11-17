@@ -68,6 +68,17 @@ from graphbus_cli.utils.errors import BuildError
     type=str,
     help='User intent/goal for the negotiation (e.g., "optimize performance", "improve error handling")'
 )
+@click.option(
+    '--no-git',
+    is_flag=True,
+    help='Disable git workflow (branch creation, PR)'
+)
+@click.option(
+    '--project-root',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    default='.',
+    help='Project root directory (default: current directory)'
+)
 def negotiate(
     artifacts_dir: str,
     rounds: int,
@@ -78,7 +89,9 @@ def negotiate(
     protected_files: tuple,
     arbiter_agent: str,
     verbose: bool,
-    intent: str
+    intent: str,
+    no_git: bool,
+    project_root: str
 ):
     """
     Run LLM agent negotiation on existing build artifacts.
@@ -108,14 +121,17 @@ def negotiate(
     \b
     How It Works:
       1. Load agents from build artifacts
-      2. Activate agents as LLM agents
-      3. Agents check intent relevance and code size
-      4. Each agent analyzes code and proposes improvements
-      5. Arbiter reconciles all proposals holistically (if configured)
-      6. Agents evaluate each other's proposals
-      7. Arbiter resolves conflicts if needed
-      8. Accepted proposals are committed to files
-      9. Repeat for N rounds or until convergence
+      2. Check for previous PR feedback (if intent matches)
+      3. Create feature branch (graphbus/negotiate-<intent>-<id>)
+      4. Activate agents as LLM agents
+      5. Agents check intent relevance and code size
+      6. Each agent analyzes code and proposes improvements
+      7. Arbiter reconciles all proposals holistically (if configured)
+      8. Agents evaluate each other's proposals
+      9. Arbiter resolves conflicts if needed
+      10. Accepted proposals are committed to branch
+      11. Repeat for N rounds or until convergence
+      12. Push branch and create pull request
 
     \b
     NEW: User Intent Integration
@@ -134,11 +150,32 @@ def negotiate(
         - Ensures proposals work together harmoniously
 
     \b
+    NEW: Git Workflow Integration
+      By default, negotiation creates a feature branch and PR:
+        - Creates branch: graphbus/negotiate-<intent-slug>-<uuid>
+        - Commits each negotiation round to the branch
+        - Pushes branch and creates PR with summary
+        - PR includes commit breakdown and session tracking
+        - Developer can review PR and add comments
+        - Run negotiate again with same intent to incorporate feedback
+        - Use --no-git to disable this workflow
+
+    \b
+    NEW: PR Feedback Integration
+      When you run negotiate with an intent that matches a previous PR:
+        - Retrieves comments and reviews from the PR
+        - Agents analyze feedback from developers
+        - Proposals incorporate developer suggestions
+        - Enables iterative improvement based on human feedback
+
+    \b
     Output:
-      The negotiation process updates:
-        - Source files (agents/*.py) with accepted changes
-        - .graphbus/negotiations.json with complete history
-        - Build artifacts reflecting code changes
+      The negotiation process creates:
+        - Feature branch with negotiation commits
+        - Pull request for developer review
+        - Session tracking in .graphbus/negotiations/<session-id>/
+        - Source file changes (committed to branch)
+        - .graphbus/negotiations.json with session index
     """
     try:
         artifacts_path = Path(artifacts_dir).resolve()
@@ -193,6 +230,8 @@ def negotiate(
 
         # Run negotiation
         print_info("Starting negotiation...")
+        if not no_git:
+            print_info("Git workflow: enabled (branch + PR will be created)")
         console.print()
 
         from graphbus_core.build.orchestrator import run_negotiation
@@ -202,7 +241,9 @@ def negotiate(
             llm_config=llm_config,
             safety_config=safety_config,
             user_intent=intent,
-            verbose=verbose
+            verbose=verbose,
+            project_root=project_root,
+            enable_git_workflow=not no_git
         )
 
         _display_negotiation_summary(results)
@@ -225,6 +266,25 @@ def _display_negotiation_summary(results):
     console.print(f"[cyan]Proposals made:[/cyan] {num_proposals}")
     console.print(f"[cyan]Proposals accepted:[/cyan] {num_accepted}")
     console.print(f"[cyan]Files modified:[/cyan] {num_files_changed}")
+
+    # Display session/PR info if available
+    session = results.get('session')
+    if session:
+        console.print()
+        console.print(f"[cyan]Session ID:[/cyan] {session.get('session_id')}")
+        console.print(f"[cyan]Branch:[/cyan] {session.get('branch_name')}")
+
+        if session.get('pr_url'):
+            console.print(f"[cyan]Pull Request:[/cyan] {session.get('pr_url')}")
+            console.print(f"[cyan]PR Status:[/cyan] {session.get('status')}")
+            console.print()
+            print_success(f"Pull request created! Review at: {session.get('pr_url')}")
+            console.print()
+            console.print("[yellow]Next steps:[/yellow]")
+            console.print("  1. Review the PR and add comments with feedback")
+            console.print(f"  2. Run 'graphbus negotiate' again with the same intent to incorporate feedback")
+            console.print(f"  3. Session tracked in: .graphbus/negotiations/{session.get('session_id')}/")
+
     console.print()
 
     if num_accepted > 0:
