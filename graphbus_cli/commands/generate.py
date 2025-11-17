@@ -173,7 +173,7 @@ def _generate_agent_code(agent_name: str, subscribes: List[str], publishes: List
     lines.append('')
 
     # Imports
-    lines.append('from graphbus_core.node_base import NodeBase')
+    lines.append('from graphbus_core import GraphBusNode, schema_method')
     if subscribes:
         lines.append('from graphbus_core.decorators import agent, method, subscribes')
     else:
@@ -192,8 +192,15 @@ def _generate_agent_code(agent_name: str, subscribes: List[str], publishes: List
     lines.append(f')')
 
     # Class definition
-    lines.append(f'class {agent_name}(NodeBase):')
+    lines.append(f'class {agent_name}(GraphBusNode):')
     lines.append(f'    """TODO: Add class docstring"""')
+    lines.append('')
+    lines.append('    SYSTEM_PROMPT = """')
+    lines.append(f'    You are a {agent_name} agent.')
+    lines.append('    TODO: Describe your role and capabilities.')
+    lines.append('    In Build Mode, you can negotiate with other agents to improve')
+    lines.append('    TODO: describe what aspects of the system you can improve.')
+    lines.append('    """')
     lines.append('')
 
     # Init method

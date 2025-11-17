@@ -12,6 +12,7 @@ from graphbus_core.model.prompt import SystemPrompt
 from graphbus_core.model.schema import Schema, SchemaMethod
 from graphbus_core.model.topic import Topic, Subscription
 from graphbus_core.build.scanner import read_source_code, extract_class_source
+from graphbus_core.exceptions import BuildError
 
 
 def extract_agent_definitions(
@@ -74,6 +75,46 @@ def _extract_publish_topics(source_code: str) -> Dict[str, str]:
     return publishes
 
 
+def _validate_agent_requirements(class_obj: Type[GraphBusNode]) -> None:
+    """
+    Validate that an agent meets all GraphBus requirements.
+
+    Requirements:
+    1. Must inherit from GraphBusNode (already enforced by scanner)
+    2. Must have SYSTEM_PROMPT defined (class attribute or via get_system_prompt())
+
+    Args:
+        class_obj: The agent class to validate
+
+    Raises:
+        BuildError: If agent doesn't meet requirements
+    """
+    agent_name = class_obj.__name__
+
+    # Check if SYSTEM_PROMPT is defined
+    # Try to get system prompt - this checks both class attribute and get_system_prompt()
+    try:
+        system_prompt = class_obj.get_system_prompt()
+        if not system_prompt or not system_prompt.strip():
+            raise BuildError(
+                f"Agent '{agent_name}' has empty SYSTEM_PROMPT. "
+                f"All GraphBus agents must define a meaningful SYSTEM_PROMPT class attribute "
+                f"describing their role and capabilities."
+            )
+    except AttributeError:
+        # get_system_prompt() not defined or SYSTEM_PROMPT missing
+        raise BuildError(
+            f"Agent '{agent_name}' is missing SYSTEM_PROMPT. "
+            f"All GraphBus agents must inherit from GraphBusNode and define a SYSTEM_PROMPT class attribute.\n\n"
+            f"Example:\n"
+            f"class {agent_name}(GraphBusNode):\n"
+            f"    SYSTEM_PROMPT = \"\"\"\n"
+            f"    You are a {agent_name.lower()} that [describe your role].\n"
+            f"    In Build Mode, you can [describe what you negotiate about].\n"
+            f"    \"\"\"\n"
+        )
+
+
 def extract_single_agent(
     class_obj: Type[GraphBusNode],
     module_name: str,
@@ -89,7 +130,13 @@ def extract_single_agent(
 
     Returns:
         AgentDefinition object
+
+    Raises:
+        ValueError: If agent doesn't meet requirements (missing SYSTEM_PROMPT)
     """
+    # Validate agent requirements
+    _validate_agent_requirements(class_obj)
+
     # Read full source code
     full_source = read_source_code(source_file)
 
