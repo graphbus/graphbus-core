@@ -104,13 +104,34 @@ class NegotiationSessionManager:
         if not self.index_file.exists():
             return {}
 
-        with open(self.index_file, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(self.index_file, 'r') as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, ValueError):
+            # Corrupt or empty file - return empty dict
+            return {}
 
+        # Handle both old format (list) and new format (dict with "sessions" key)
         sessions = {}
-        for session_data in data.get("sessions", []):
-            session = NegotiationSession.from_dict(session_data)
-            sessions[session.session_id] = session
+
+        if isinstance(data, list):
+            # Old format - migrate to new format
+            session_list = data
+        elif isinstance(data, dict):
+            # New format
+            session_list = data.get("sessions", [])
+        else:
+            # Unknown format - return empty
+            return {}
+
+        # Load sessions
+        for session_data in session_list:
+            try:
+                session = NegotiationSession.from_dict(session_data)
+                sessions[session.session_id] = session
+            except (KeyError, TypeError):
+                # Skip malformed session data
+                continue
 
         return sessions
 
