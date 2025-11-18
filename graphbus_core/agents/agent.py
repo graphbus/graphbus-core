@@ -262,33 +262,18 @@ Questions should be:
 - Related to edge cases, production concerns, or design choices
 - Something the user needs to decide (not something you can infer)
 
-Return ONLY a JSON array:
-[
-  {{
-    "question": "How should the system handle X edge case?",
-    "options": ["Option A with trade-offs", "Option B with trade-offs", "Option C"],
-    "context": "Why this matters for production deployment",
-    "importance": "critical" or "nice-to-have"
-  }},
-  ...
-]
-
-If no questions are needed, return an empty array: []
+If no questions are needed, return an empty questions array.
 """
 
         try:
-            response = self.llm.generate(prompt, system=self.system_prompt)
+            response_data = self.llm.generate_with_tool(
+                prompt,
+                tool_name="generate_clarifying_questions",
+                tool_schema=CLARIFYING_QUESTIONS_SCHEMA,
+                system=self.system_prompt
+            )
 
-            # Parse JSON (could be array or object)
-            parsed = parse_json_from_llm_response(response, context=f"{self.name} question generation")
-
-            # Ensure it's a list
-            if isinstance(parsed, dict):
-                questions = [parsed]
-            elif isinstance(parsed, list):
-                questions = parsed
-            else:
-                questions = []
+            questions = response_data.get('questions', [])
 
             # Add agent name to each question
             for q in questions:
@@ -296,7 +281,7 @@ If no questions are needed, return an empty array: []
                     q['agent'] = self.name
 
             return questions
-        except LLMResponseError as e:
+        except Exception as e:
             print(f"Warning: Agent {self.name} question generation failed: {e}")
             return []
 
@@ -463,46 +448,31 @@ Proposed change:
 - New code:
 {proposal.code_change.new_code}
 
-Should you accept this proposal? Return ONLY a JSON object:
-{{
-  "decision": "accept" or "reject",
-  "reasoning": "brief explanation"
-}}
-"""
+Should you accept this proposal? Provide your evaluation with decision (approve/reject/conditional),
+rationale, any conflicts you see, and suggestions if applicable."""
 
         try:
-            response = self.llm.generate(prompt, system=self.system_prompt)
-            eval_data = parse_json_from_llm_response(response, context=f"{self.name} proposal evaluation")
+            eval_data = self.llm.generate_with_tool(
+                prompt,
+                tool_name="evaluate_proposal",
+                tool_schema=EVALUATION_SCHEMA,
+                system=self.system_prompt
+            )
 
-            # Validate required keys
-            validate_json_structure(eval_data, ["decision"], context="Proposal evaluation")
-
-            # Validate decision value
-            decision = eval_data.get("decision", "accept")
-            if decision not in ["accept", "reject"]:
-                print(f"Warning: Invalid decision '{decision}', defaulting to 'accept'")
-                decision = "accept"
+            # Map tool output decision to ProposalEvaluation decision format
+            decision_map = {"approve": "accept", "reject": "reject", "conditional": "reject"}
+            decision = decision_map.get(eval_data.get("decision", "approve"), "accept")
 
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
                 evaluator=self.name,
                 round=round_num,
                 decision=decision,
-                reasoning=eval_data.get("reasoning", "Evaluated by LLM"),
-                confidence=0.8
+                reasoning=eval_data.get("rationale", "Evaluated by LLM"),
+                confidence=0.9
             )
 
-        except LLMResponseError as e:
-            print(f"Warning: Agent {self.name} evaluation failed - LLM response error: {e}, defaulting to accept")
-            return ProposalEvaluation(
-                proposal_id=proposal.proposal_id,
-                evaluator=self.name,
-                round=round_num,
-                decision="accept",
-                reasoning="Evaluation failed: LLM response error",
-                confidence=0.0
-            )
-        except EvaluationError as e:
+        except Exception as e:
             print(f"Warning: Agent {self.name} evaluation failed: {e}, defaulting to accept")
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
@@ -563,42 +533,27 @@ Review all proposals holistically and provide reconciliation guidance:
 3. Suggest modifications to avoid conflicts
 4. Recommend which proposals should proceed and which should be deferred
 
-Return ONLY a JSON object:
-{{
-  "overall_assessment": "brief summary of the proposals as a whole",
-  "conflicts": [
-    {{"proposals": ["prop_id1", "prop_id2"], "issue": "description of conflict"}}
-  ],
-  "recommendations": {{
-    "prop_id1": {{"action": "proceed|defer|modify", "reasoning": "why", "priority": 1-5}},
-    "prop_id2": {{"action": "proceed|defer|modify", "reasoning": "why", "priority": 1-5}}
-  }},
-  "suggested_modifications": [
-    {{"proposal": "prop_id", "suggestion": "what to change"}}
-  ]
-}}
-"""
+Provide structured reconciliation with overall assessment, conflicts identified, and recommendations."""
 
         try:
-            response = self.llm.generate(prompt, system=self.system_prompt + "\n\nYou are an impartial arbiter reconciling proposals.")
-            reconciliation_data = parse_json_from_llm_response(response, context=f"Arbiter {self.name} reconciliation")
-
-            # Validate structure
-            if not isinstance(reconciliation_data, dict):
-                raise LLMResponseError(f"Expected dict, got {type(reconciliation_data).__name__}")
+            reconciliation_data = self.llm.generate_with_tool(
+                prompt,
+                tool_name="reconcile_proposals",
+                tool_schema=RECONCILIATION_SCHEMA,
+                system=self.system_prompt + "\n\nYou are an impartial arbiter reconciling proposals."
+            )
 
             return reconciliation_data
-        except LLMResponseError as e:
-            print(f"Warning: Arbiter {self.name} reconciliation failed - LLM response error: {e}")
+        except Exception as e:
+            print(f"Warning: Arbiter {self.name} reconciliation failed: {e}")
             # Return safe default - allow all to proceed
             return {
                 "overall_assessment": "Reconciliation failed, proceeding with all proposals",
                 "conflicts": [],
                 "recommendations": {
-                    prop.proposal_id: {"action": "proceed", "reasoning": "Default", "priority": 3}
+                    prop.proposal_id: "proceed with default priority"
                     for prop in proposals
-                },
-                "suggested_modifications": []
+                }
             }
 
     def arbitrate_conflict(
@@ -656,46 +611,30 @@ As an arbiter, make a final decision. Consider:
 2. Potential impact on the system
 3. Quality of reasoning from both sides
 
-Return ONLY a JSON object:
-{{
-  "decision": "accept" or "reject",
-  "reasoning": "detailed explanation of your arbitration decision"
-}}
-"""
+Provide your arbitration decision with rationale, approved/rejected proposals, and any suggested modifications."""
 
         try:
-            response = self.llm.generate(prompt, system=self.system_prompt + "\n\nYou are an impartial arbiter.")
-            arbiter_data = parse_json_from_llm_response(response, context=f"Arbiter {self.name} decision")
+            arbiter_data = self.llm.generate_with_tool(
+                prompt,
+                tool_name="arbitrate_conflict",
+                tool_schema=ARBITRATION_SCHEMA,
+                system=self.system_prompt + "\n\nYou are an impartial arbiter."
+            )
 
-            # Validate required keys
-            validate_json_structure(arbiter_data, ["decision"], context="Arbiter decision")
-
-            # Validate decision value
-            decision = arbiter_data.get("decision", "reject")
-            if decision not in ["accept", "reject"]:
-                print(f"Warning: Invalid arbiter decision '{decision}', defaulting to 'reject'")
-                decision = "reject"
+            # Map schema decision to accept/reject
+            decision_str = arbiter_data.get("decision", "reject").lower()
+            decision = "accept" if "approv" in decision_str or "accept" in decision_str else "reject"
 
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
                 evaluator=f"{self.name} (ARBITER)",
                 round=round_num,
                 decision=decision,
-                reasoning=f"[ARBITER] {arbiter_data.get('reasoning', 'Arbitrated')}",
+                reasoning=f"[ARBITER] {arbiter_data.get('decision', 'Arbitrated')}",
                 confidence=1.0  # Arbiter decisions are final
             )
 
-        except LLMResponseError as e:
-            print(f"Warning: Arbiter {self.name} failed - LLM response error: {e}, defaulting to reject")
-            return ProposalEvaluation(
-                proposal_id=proposal.proposal_id,
-                evaluator=f"{self.name} (ARBITER)",
-                round=round_num,
-                decision="reject",
-                reasoning=f"[ARBITER] Arbitration failed: LLM response error",
-                confidence=0.5
-            )
-        except EvaluationError as e:
+        except Exception as e:
             print(f"Warning: Arbiter {self.name} failed: {e}, defaulting to reject")
             return ProposalEvaluation(
                 proposal_id=proposal.proposal_id,
