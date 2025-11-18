@@ -80,3 +80,53 @@ class LLMClient:
             import traceback
             traceback.print_exc()
             raise
+
+    def generate_with_tool(self, prompt: str, tool_name: str, tool_schema: dict, system: Optional[str] = None) -> dict:
+        """
+        Generate a structured response using Claude's tool use feature.
+
+        Args:
+            prompt: User prompt
+            tool_name: Name of the tool to use
+            tool_schema: JSON schema for the tool's input_schema
+            system: Optional system prompt
+
+        Returns:
+            Parsed tool use result as dictionary
+        """
+        try:
+            # Build the tool definition
+            tool_definition = {
+                "name": tool_name,
+                "description": f"Use this tool to provide structured output for {tool_name}",
+                "input_schema": tool_schema
+            }
+
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                system=system if system else "",
+                tools=[tool_definition],
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            # Extract tool use result
+            if message.content and len(message.content) > 0:
+                for block in message.content:
+                    if block.type == "tool_use":
+                        # Return the input that was passed to the tool
+                        return block.input
+
+                # If no tool use found, raise error
+                raise ValueError(f"No tool use found in response. Got: {message.content}")
+            else:
+                raise ValueError("Empty response from LLM")
+
+        except Exception as e:
+            print(f"Error calling Anthropic API with tool: {e}")
+            import traceback
+            traceback.print_exc()
+            raise

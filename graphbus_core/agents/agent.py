@@ -17,6 +17,16 @@ from graphbus_core.exceptions import (
     LLMResponseError
 )
 from graphbus_core.utils import parse_json_from_llm_response, validate_json_structure
+from graphbus_core.agents.schemas import (
+    INTENT_RELEVANCE_SCHEMA,
+    CODE_ANALYSIS_SCHEMA,
+    CODE_SUGGESTIONS_SCHEMA,
+    PROPOSAL_SCHEMA,
+    EVALUATION_SCHEMA,
+    CLARIFYING_QUESTIONS_SCHEMA,
+    RECONCILIATION_SCHEMA,
+    ARBITRATION_SCHEMA
+)
 
 
 class LLMAgent(GraphBusNode):
@@ -143,28 +153,19 @@ User Intent: {user_intent}
 
 Is this user intent relevant to your agent's scope and responsibilities?
 
-Return ONLY a JSON object:
-{{
-  "relevant": true or false,
-  "reasoning": "brief explanation of why this intent is or isn't relevant to your agent",
-  "confidence": 0.0 to 1.0
-}}
-"""
+Respond using the check_intent_relevance tool with your structured assessment."""
 
         try:
-            response = self.llm.generate(prompt, system=self.system_prompt)
-            relevance_data = parse_json_from_llm_response(response, context=f"{self.name} intent relevance")
-
-            # Validate required keys
-            validate_json_structure(relevance_data, ["relevant", "reasoning"], context="Intent relevance response")
-
+            relevance_data = self.llm.generate_with_tool(
+                prompt,
+                tool_name="check_intent_relevance",
+                tool_schema=INTENT_RELEVANCE_SCHEMA,
+                system=self.system_prompt
+            )
             return relevance_data
-        except LLMResponseError as e:
+        except Exception as e:
             print(f"Warning: Agent {self.name} intent relevance check failed: {e}")
             return {"relevant": False, "reasoning": "LLM response error", "confidence": 0.0}
-        except IntentRelevanceError as e:
-            print(f"Warning: Agent {self.name} intent relevance check failed: {e}")
-            return {"relevant": False, "reasoning": "Check failed", "confidence": 0.0}
 
     def check_code_size(self) -> dict:
         """
@@ -325,34 +326,26 @@ Analyze this code and identify potential improvements:
 {self.agent_def.source_code}
 ```
 {intent_context}
-Return a JSON object with:
-- "summary": Brief summary of what this code does
-- "potential_improvements": List of specific improvements (e.g., "add timestamps", "add color output")
 
-Keep it simple and practical.
-"""
+Provide a structured analysis with issues, improvements, priority level, and summary."""
 
         try:
-            response = self.llm.generate(prompt, system=self.system_prompt)
-            analysis = parse_json_from_llm_response(response, context=f"{self.name} code analysis")
-
-            # Validate structure
-            if not isinstance(analysis, dict):
-                raise LLMResponseError(f"Expected dict, got {type(analysis).__name__}")
+            analysis = self.llm.generate_with_tool(
+                prompt,
+                tool_name="analyze_code",
+                tool_schema=CODE_ANALYSIS_SCHEMA,
+                system=self.system_prompt
+            )
 
             self.memory.store("code_analysis", analysis)
             return analysis
-        except LLMResponseError as e:
-            print(f"Warning: Agent {self.name} analysis failed - LLM response error: {e}")
-            return {
-                "summary": "Analysis failed - invalid response",
-                "potential_improvements": []
-            }
-        except CodeAnalysisError as e:
+        except Exception as e:
             print(f"Warning: Agent {self.name} analysis failed: {e}")
             return {
-                "summary": "Analysis failed",
-                "potential_improvements": []
+                "issues": [],
+                "potential_improvements": [],
+                "priority": "low",
+                "summary": "Analysis failed"
             }
 
     def propose_improvement(self, improvement_idea: str, round_num: int = 0, user_intent: str = None) -> Optional[Proposal]:
@@ -385,26 +378,16 @@ Given this code:
 
 Propose a specific code change to implement this improvement: {improvement_idea}
 {intent_context}
-Return ONLY a JSON object with:
-{{
-  "target_method": "name of method to modify",
-  "old_code": "exact old code to replace",
-  "new_code": "new code to insert",
-  "reason": "why this improves the code"
-}}
 
-Make the change minimal and focused. The old_code must be an exact match.
-"""
+Make the change minimal and focused. Provide your proposal with exact code before and after,
+impact level, and clear rationale."""
 
         try:
-            response = self.llm.generate(prompt, system=self.system_prompt)
-            change_data = parse_json_from_llm_response(response, context=f"{self.name} proposal generation")
-
-            # Validate required keys
-            validate_json_structure(
-                change_data,
-                ["old_code", "new_code"],
-                context="Proposal change data"
+            change_data = self.llm.generate_with_tool(
+                prompt,
+                tool_name="propose_improvement",
+                tool_schema=PROPOSAL_SCHEMA,
+                system=self.system_prompt
             )
 
             # Create proposal
