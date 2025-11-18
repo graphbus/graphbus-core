@@ -82,7 +82,7 @@ def generate():
     help='Agent dependencies (can be specified multiple times, e.g., --depends-on DataValidator --depends-on Logger)'
 )
 def agent(agent_name: str, subscribes: tuple, publishes: tuple, methods: tuple,
-          output_dir: str, with_llm: bool, with_state: bool, with_tests: bool,
+          output_dir: str, force: bool, with_llm: bool, with_state: bool, with_tests: bool,
           namespace: str, dependencies: tuple):
     """
     Generate a new agent class with decorators and method stubs.
@@ -117,8 +117,13 @@ def agent(agent_name: str, subscribes: tuple, publishes: tuple, methods: tuple,
 
     # Check if file exists
     if file_path.exists():
-        print_error(f"File '{file_path}' already exists. Choose a different name or remove the existing file.")
-        raise click.Abort()
+        if not force:
+            print_info(f"Agent file already exists at {file_path}")
+            print_info(f"Use --force/-f to overwrite, or choose a different agent name")
+            console.print()
+            return
+        else:
+            print_info(f"Overwriting existing agent file: {file_path}")
 
     print_header(f"Generating Agent: {agent_name}")
     print_info(f"Output: {file_path}")
