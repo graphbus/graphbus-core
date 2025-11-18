@@ -13,6 +13,13 @@ from graphbus_cli.utils.output import (
     print_header
 )
 from graphbus_cli.utils.errors import BuildError
+from graphbus_cli.utils.websocket import (
+    start_websocket_server,
+    stop_websocket_server,
+    ask_question_sync,
+    has_connected_clients,
+    is_websocket_available
+)
 
 
 @click.command()
@@ -178,6 +185,21 @@ def negotiate(
         - .graphbus/negotiations.json with session index
     """
     try:
+        # Start WebSocket server for UI communication (if available)
+        websocket_server = None
+        use_websocket = False
+        if is_websocket_available():
+            try:
+                websocket_server = start_websocket_server(wait_for_client=False, timeout=2.0)
+                if websocket_server and has_connected_clients():
+                    print_info("UI connected via WebSocket - using graphical interface")
+                    use_websocket = True
+                elif websocket_server:
+                    print_info("WebSocket server started (waiting for UI connection...)")
+            except Exception as e:
+                if verbose:
+                    print_info(f"Note: Could not start WebSocket server: {e}")
+
         artifacts_path = Path(artifacts_dir).resolve()
 
         # Verify artifacts directory contains necessary files
@@ -250,51 +272,83 @@ def negotiate(
                     # Ask each question interactively
                     answers = []
                     for i, q in enumerate(questions, 1):
-                        console.print(f"[bold cyan]Question {i}/{len(questions)} from {q['agent']}:[/bold cyan]")
-                        console.print(f"{q['question']}")
-
-                        if q.get('context'):
-                            console.print(f"[dim]Context: {q['context']}[/dim]")
-
-                        console.print()
-                        options = q.get('options', [])
-
-                        # Display options
-                        for idx, opt in enumerate(options, 1):
-                            console.print(f"  {idx}. {opt}")
-
-                        console.print()
-
-                        # Get user choice
-                        while True:
+                        # Try WebSocket first if UI is connected
+                        answer = None
+                        if use_websocket and has_connected_clients():
                             try:
-                                choice = click.prompt(
-                                    "Your answer (enter number or custom text)",
-                                    type=str,
-                                    default="1"
+                                # Send question via WebSocket
+                                options = q.get('options', [])
+                                context = q.get('context')
+                                question_text = f"[{q['agent']}] {q['question']}"
+
+                                print_info(f"Waiting for UI response to question {i}/{len(questions)}...")
+                                answer = ask_question_sync(
+                                    question=question_text,
+                                    options=options,
+                                    context=context,
+                                    timeout=300  # 5 minute timeout
                                 )
 
-                                # Try to parse as number
+                                if answer:
+                                    print_success(f"✓ Received answer: {answer}")
+                                else:
+                                    print_info("No response from UI, falling back to CLI prompt")
+                                    use_websocket = False  # Fall back for remaining questions
+                            except Exception as e:
+                                if verbose:
+                                    print_info(f"WebSocket error: {e}, falling back to CLI")
+                                use_websocket = False
+
+                        # Fall back to CLI prompt if WebSocket not available or failed
+                        if not answer:
+                            console.print(f"[bold cyan]Question {i}/{len(questions)} from {q['agent']}:[/bold cyan]")
+                            console.print(f"{q['question']}")
+
+                            if q.get('context'):
+                                console.print(f"[dim]Context: {q['context']}[/dim]")
+
+                            console.print()
+                            options = q.get('options', [])
+
+                            # Display options
+                            for idx, opt in enumerate(options, 1):
+                                console.print(f"  {idx}. {opt}")
+
+                            console.print()
+
+                            # Get user choice
+                            while True:
                                 try:
-                                    choice_idx = int(choice) - 1
-                                    if 0 <= choice_idx < len(options):
-                                        answer = options[choice_idx]
-                                    else:
+                                    choice = click.prompt(
+                                        "Your answer (enter number or custom text)",
+                                        type=str,
+                                        default="1"
+                                    )
+
+                                    # Try to parse as number
+                                    try:
+                                        choice_idx = int(choice) - 1
+                                        if 0 <= choice_idx < len(options):
+                                            answer = options[choice_idx]
+                                        else:
+                                            answer = choice
+                                    except ValueError:
                                         answer = choice
-                                except ValueError:
-                                    answer = choice
 
-                                answers.append({
-                                    "question": q['question'],
-                                    "answer": answer,
-                                    "agent": q['agent']
-                                })
-                                break
-                            except (KeyboardInterrupt, click.Abort):
-                                console.print("\n[yellow]Skipping remaining questions...[/yellow]")
-                                break
+                                    break
+                                except (KeyboardInterrupt, click.Abort):
+                                    console.print("\n[yellow]Skipping remaining questions...[/yellow]")
+                                    break
 
-                        console.print()
+                            console.print()
+
+                        # Store answer if we got one
+                        if answer:
+                            answers.append({
+                                "question": q['question'],
+                                "answer": answer,
+                                "agent": q['agent']
+                            })
 
                     if answers:
                         # Enhance intent with answers
@@ -333,6 +387,10 @@ def negotiate(
     except Exception as e:
         console.print()
         raise BuildError(f"Negotiation failed: {str(e)}")
+    finally:
+        # Stop WebSocket server if it was started
+        if websocket_server:
+            stop_websocket_server()
 
 
 def _display_negotiation_summary(results):

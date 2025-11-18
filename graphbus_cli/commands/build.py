@@ -15,6 +15,12 @@ from graphbus_cli.utils.output import (
     print_header, create_progress_bar, format_duration
 )
 from graphbus_cli.utils.errors import BuildError
+from graphbus_cli.utils.websocket import (
+    start_websocket_server,
+    stop_websocket_server,
+    has_connected_clients,
+    is_websocket_available
+)
 
 
 @click.command()
@@ -158,6 +164,19 @@ def build(
         - Suggests modifications for alignment
     """
     try:
+        # Start WebSocket server if agent orchestration is enabled
+        websocket_server = None
+        if enable_agents and is_websocket_available():
+            try:
+                websocket_server = start_websocket_server(wait_for_client=False, timeout=2.0)
+                if websocket_server and has_connected_clients():
+                    print_info("UI connected via WebSocket - agent messages will be streamed")
+                elif websocket_server:
+                    print_info("WebSocket server started (waiting for UI connection...)")
+            except Exception as e:
+                if verbose:
+                    print_info(f"Note: Could not start WebSocket server: {e}")
+
         agents_path = Path(agents_dir).resolve()
         output_path = Path(output_dir).resolve()
 
@@ -253,6 +272,10 @@ def build(
     except Exception as e:
         console.print()
         raise BuildError(f"Build failed: {str(e)}")
+    finally:
+        # Stop WebSocket server if it was started
+        if enable_agents and websocket_server:
+            stop_websocket_server()
 
 
 def _display_build_summary(artifacts):

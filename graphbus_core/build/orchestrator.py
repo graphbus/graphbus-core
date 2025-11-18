@@ -80,6 +80,33 @@ class AgentOrchestrator:
         self.session = session
         self.pr_feedback_context = None  # Will be populated if previous PR found
 
+    def _broadcast_message(self, agent: str, message: str, level: str = "info"):
+        """
+        Broadcast a message to connected UIs via WebSocket.
+
+        Args:
+            agent: Agent name
+            message: Message text
+            level: Message level ("info", "success", "warning", "error")
+        """
+        try:
+            # Import here to avoid circular dependencies and make it optional
+            from graphbus_cli.utils.websocket import send_message_sync, has_connected_clients
+
+            if has_connected_clients():
+                send_message_sync("agent_message", {
+                    "agent": agent,
+                    "text": message,
+                    "level": level,
+                    "metadata": {}
+                })
+        except ImportError:
+            # WebSocket utilities not available (running from core without CLI)
+            pass
+        except Exception:
+            # Silently fail - don't interrupt orchestration if WebSocket fails
+            pass
+
     def activate_agents(self) -> None:
         """
         Activate all agents (instantiate LLM agents).
@@ -99,6 +126,7 @@ class AgentOrchestrator:
                 )
                 self.agents[agent_name] = agent
                 print(f"  ✓ Activated {agent_name}")
+                self._broadcast_message("Orchestrator", f"Activated agent: {agent_name}", "info")
 
         print(f"[Orchestrator] {len(self.agents)} agents activated")
         if self.user_intent:
@@ -127,9 +155,19 @@ class AgentOrchestrator:
                     if relevance.get("relevant", False):
                         print(f"    ✓ Intent relevant (confidence: {relevance.get('confidence', 0):.2f})")
                         print(f"      Reason: {relevance.get('reasoning', 'N/A')}")
+                        self._broadcast_message(
+                            agent_name,
+                            f"Intent relevant (confidence: {relevance.get('confidence', 0):.2f}) - {relevance.get('reasoning', 'N/A')}",
+                            "success"
+                        )
                     else:
                         print(f"    ✗ Intent NOT relevant (confidence: {relevance.get('confidence', 0):.2f})")
                         print(f"      Reason: {relevance.get('reasoning', 'N/A')}")
+                        self._broadcast_message(
+                            agent_name,
+                            f"Intent not relevant - {relevance.get('reasoning', 'N/A')}",
+                            "info"
+                        )
                 except (IntentRelevanceError, LLMResponseError) as e:
                     print(f"    Warning: Intent relevance check failed: {format_exception_for_user(e)}")
 
@@ -252,10 +290,12 @@ class AgentOrchestrator:
             improvement = improvements[0] if improvements else None
             if improvement:
                 print(f"  {agent_name}: Proposing '{improvement}'...")
+                self._broadcast_message(agent_name, f"Proposing improvement: {improvement}", "info")
                 try:
                     proposal = agent.propose_improvement(improvement, round_num=0, user_intent=self.user_intent)
                     if proposal:
                         self.negotiation_engine.add_proposal(proposal)
+                        self._broadcast_message(agent_name, f"Created proposal: {proposal.intent}", "success")
                 except Exception as e:
                     print(f"    Warning: Proposal failed: {e}")
 
@@ -301,9 +341,11 @@ class AgentOrchestrator:
             conflicts = reconciliation.get('conflicts', [])
             if conflicts:
                 print(f"\n  Conflicts identified ({len(conflicts)}):")
+                self._broadcast_message("Arbiter", f"Identified {len(conflicts)} conflict(s)", "warning")
                 for conflict in conflicts:
                     print(f"    - {conflict.get('issue', 'N/A')}")
                     print(f"      Proposals: {conflict.get('proposals', [])}")
+                    self._broadcast_message("Arbiter", f"Conflict: {conflict.get('issue', 'N/A')}", "warning")
 
             recommendations = reconciliation.get('recommendations', {})
             if recommendations:
@@ -526,6 +568,7 @@ class AgentOrchestrator:
             print(f"\n{'='*60}")
             print(f"NEGOTIATION ROUND {round_num + 1}/{self.safety_config.max_negotiation_rounds}")
             print(f"{'='*60}")
+            self._broadcast_message("Orchestrator", f"Starting negotiation round {round_num + 1}/{self.safety_config.max_negotiation_rounds}", "info")
 
             # Proposals phase
             proposals_before = len(self.negotiation_engine.proposals)
@@ -555,6 +598,7 @@ class AgentOrchestrator:
             if commits:
                 modified_files = self.apply_code_changes(commits)
                 all_modified_files.extend(modified_files)
+                self._broadcast_message("Orchestrator", f"Applied {len(commits)} commits, modified {len(modified_files)} files", "success")
 
                 # Record commits in session
                 if self.enable_git_workflow and self.session:
