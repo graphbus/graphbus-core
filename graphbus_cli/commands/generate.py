@@ -49,6 +49,12 @@ def generate():
     help='Output directory (default: agents/)'
 )
 @click.option(
+    '--force',
+    '-f',
+    is_flag=True,
+    help='Overwrite existing agent file'
+)
+@click.option(
     '--with-llm',
     is_flag=True,
     help='Include LLM integration boilerplate'
