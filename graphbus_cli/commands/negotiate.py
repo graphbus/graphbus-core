@@ -269,12 +269,14 @@ def negotiate(
                 if questions:
                     console.print(f"\n[yellow]✨ Agents have {len(questions)} clarifying question(s)[/yellow]\n")
 
-                    # Ask each question interactively
+                    # Ask questions via WebSocket if UI is connected
+                    # Otherwise skip questions and run negotiation end-to-end
                     answers = []
-                    for i, q in enumerate(questions, 1):
-                        # Try WebSocket first if UI is connected
-                        answer = None
-                        if use_websocket and has_connected_clients():
+
+                    if use_websocket and has_connected_clients():
+                        # Ask each question via WebSocket
+                        for i, q in enumerate(questions, 1):
+                            answer = None
                             try:
                                 # Send question via WebSocket
                                 options = q.get('options', [])
@@ -291,64 +293,22 @@ def negotiate(
 
                                 if answer:
                                     print_success(f"✓ Received answer: {answer}")
+                                    answers.append({
+                                        "question": q['question'],
+                                        "answer": answer,
+                                        "agent": q['agent']
+                                    })
                                 else:
-                                    print_info("No response from UI, falling back to CLI prompt")
-                                    use_websocket = False  # Fall back for remaining questions
+                                    print_info(f"No response from UI to question {i}/{len(questions)}, skipping")
                             except Exception as e:
                                 if verbose:
-                                    print_info(f"WebSocket error: {e}, falling back to CLI")
-                                use_websocket = False
-
-                        # Fall back to CLI prompt if WebSocket not available or failed
-                        if not answer:
-                            console.print(f"[bold cyan]Question {i}/{len(questions)} from {q['agent']}:[/bold cyan]")
-                            console.print(f"{q['question']}")
-
-                            if q.get('context'):
-                                console.print(f"[dim]Context: {q['context']}[/dim]")
-
-                            console.print()
-                            options = q.get('options', [])
-
-                            # Display options
-                            for idx, opt in enumerate(options, 1):
-                                console.print(f"  {idx}. {opt}")
-
-                            console.print()
-
-                            # Get user choice
-                            while True:
-                                try:
-                                    choice = click.prompt(
-                                        "Your answer (enter number or custom text)",
-                                        type=str,
-                                        default="1"
-                                    )
-
-                                    # Try to parse as number
-                                    try:
-                                        choice_idx = int(choice) - 1
-                                        if 0 <= choice_idx < len(options):
-                                            answer = options[choice_idx]
-                                        else:
-                                            answer = choice
-                                    except ValueError:
-                                        answer = choice
-
-                                    break
-                                except (KeyboardInterrupt, click.Abort):
-                                    console.print("\n[yellow]Skipping remaining questions...[/yellow]")
-                                    break
-
-                            console.print()
-
-                        # Store answer if we got one
-                        if answer:
-                            answers.append({
-                                "question": q['question'],
-                                "answer": answer,
-                                "agent": q['agent']
-                            })
+                                    print_info(f"WebSocket error on question {i}: {e}, skipping")
+                    else:
+                        # No WebSocket connection - skip questions and run end-to-end
+                        print_info("No UI connected - running negotiation without user clarifications")
+                        if not use_websocket:
+                            print_info("(WebSocket not available - questions would require user input)")
+                        console.print()
 
                     if answers:
                         # Enhance intent with answers
@@ -358,6 +318,11 @@ def negotiate(
 
                         print_success(f"✓ Received {len(answers)} answer(s) - agents will use this context")
                         console.print()
+                    else:
+                        # No answers collected - proceed with original intent
+                        if questions and (use_websocket and has_connected_clients()):
+                            print_info(f"No answers received from {len(questions)} question(s)")
+                            console.print()
 
             except Exception as e:
                 if verbose:
