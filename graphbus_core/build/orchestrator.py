@@ -8,6 +8,8 @@ from graphbus_core.model.graph import AgentGraph
 from graphbus_core.agents.llm_client import LLMClient
 from graphbus_core.agents.agent import LLMAgent
 from graphbus_core.agents.negotiation import NegotiationEngine
+from graphbus_core.agents.negotiation_async import AsyncNegotiationEngine
+import asyncio
 from graphbus_core.build.code_writer import CodeWriter
 from graphbus_core.build.artifacts import BuildArtifacts
 from graphbus_core.build.refactoring import RefactoringValidator
@@ -273,31 +275,30 @@ class AgentOrchestrator:
 
     def run_proposal_phase(self) -> None:
         """
-        Each agent proposes improvements based on its analysis.
+        Each agent proposes improvements in PARALLEL (not sequential).
+
+        Uses async/await to run all agent proposals simultaneously,
+        then collates results for consensus.
         """
-        print("\n[Orchestrator] Running proposal phase...")
+        # Create async engine and run proposals in parallel
+        async_engine = AsyncNegotiationEngine(
+            safety_config=self.safety_config,
+            user_intent=self.user_intent
+        )
+        async_engine.log_callback = print
+        async_engine.current_round = self.negotiation_engine.current_round
+        async_engine.proposal_counts = self.negotiation_engine.proposal_counts.copy()
 
-        for agent_name, agent in self.agents.items():
-            # Get analysis from memory
-            analysis = agent.memory.retrieve("code_analysis", {})
-            improvements = analysis.get("potential_improvements", [])
+        # Run proposals in parallel
+        asyncio.run(async_engine.propose_all_agents_async(self.agents, self.user_intent))
 
-            if not improvements:
-                print(f"  {agent_name}: No improvements proposed")
-                continue
+        # Copy proposals to main engine
+        for prop_id, proposal in async_engine.proposals.items():
+            self.negotiation_engine.add_proposal(proposal)
+            self._broadcast_message(proposal.src, f"Created proposal: {proposal.intent}", "success")
 
-            # Propose first improvement (keep it minimal)
-            improvement = improvements[0] if improvements else None
-            if improvement:
-                print(f"  {agent_name}: Proposing '{improvement}'...")
-                self._broadcast_message(agent_name, f"Proposing improvement: {improvement}", "info")
-                try:
-                    proposal = agent.propose_improvement(improvement, round_num=0, user_intent=self.user_intent)
-                    if proposal:
-                        self.negotiation_engine.add_proposal(proposal)
-                        self._broadcast_message(agent_name, f"Created proposal: {proposal.intent}", "success")
-                except Exception as e:
-                    print(f"    Warning: Proposal failed: {e}")
+        # Update counts
+        self.negotiation_engine.proposal_counts = async_engine.proposal_counts
 
     def run_reconciliation_phase(self) -> dict:
         """
@@ -384,8 +385,19 @@ class AgentOrchestrator:
         """
         print(f"\n[Orchestrator] Running negotiation round {self.negotiation_engine.current_round}...")
 
-        # Agents evaluate proposals
-        self.negotiation_engine.evaluate_all_proposals(self.agents)
+        # Agents evaluate proposals IN PARALLEL
+        async_engine = AsyncNegotiationEngine(safety_config=self.safety_config, user_intent=self.user_intent)
+        async_engine.log_callback = print
+        async_engine.current_round = self.negotiation_engine.current_round
+        async_engine.proposals = self.negotiation_engine.proposals.copy()
+        async_engine.evaluations = {k: v.copy() for k, v in self.negotiation_engine.evaluations.items()}
+
+        asyncio.run(async_engine.evaluate_all_proposals_async(self.agents))
+
+        # Copy evaluations back to main engine
+        for prop_id, evals in async_engine.evaluations.items():
+            for eval in evals:
+                self.negotiation_engine.add_evaluation(eval)
 
         # Create commits from accepted proposals (passes agents for arbitration)
         commits = self.negotiation_engine.create_commits(self.agents)
