@@ -7,7 +7,7 @@ Provides Prometheus metrics export and OpenTelemetry integration.
 import time
 import threading
 from typing import Dict, Any, Optional
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 
@@ -41,9 +41,9 @@ class PrometheusMetrics:
         self.message_queue_depth = defaultdict(int)
         self.agent_health_status = {}  # agent -> status (1=healthy, 0=unhealthy)
 
-        # Histogram metrics (store recent values for percentiles)
-        self.method_duration_seconds = defaultdict(list)
-        self.event_processing_duration_seconds = defaultdict(list)
+        # Histogram metrics (bounded deques for O(1) sliding window, max 1000 observations)
+        self.method_duration_seconds: Dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
+        self.event_processing_duration_seconds: Dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
 
         # Track start time
         self.start_time = time.time()
@@ -86,20 +86,14 @@ class PrometheusMetrics:
             self.agent_health_status[agent] = 1 if healthy else 0
 
     def observe_method_duration(self, agent: str, method: str, duration: float) -> None:
-        """Observe method execution duration"""
+        """Observe method execution duration (deque auto-evicts oldest beyond maxlen)"""
         key = f"{agent}.{method}"
         with self._lock:
-            # Keep last 1000 observations for histogram
-            if len(self.method_duration_seconds[key]) >= 1000:
-                self.method_duration_seconds[key].pop(0)
             self.method_duration_seconds[key].append(duration)
 
     def observe_event_duration(self, topic: str, duration: float) -> None:
-        """Observe event processing duration"""
+        """Observe event processing duration (deque auto-evicts oldest beyond maxlen)"""
         with self._lock:
-            # Keep last 1000 observations for histogram
-            if len(self.event_processing_duration_seconds[topic]) >= 1000:
-                self.event_processing_duration_seconds[topic].pop(0)
             self.event_processing_duration_seconds[topic].append(duration)
 
     def generate_prometheus_metrics(self) -> str:
