@@ -19,8 +19,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from graphbus_api.auth import init_api_key
 from graphbus_api.routes.build import router as build_router
 from graphbus_api.routes.run import router as run_router
+from graphbus_api.routes.negotiations import router as negotiations_router
 
 app = FastAPI(
     title="GraphBus API",
@@ -41,10 +43,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Auth init ────────────────────────────────────────────────────────────────
+
+init_api_key()
+
 # ── Routers ──────────────────────────────────────────────────────────────────
 
 app.include_router(build_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
+app.include_router(negotiations_router, prefix="/api")
 
 
 # ── Health ───────────────────────────────────────────────────────────────────
@@ -75,6 +82,15 @@ def root():
                 "stats":   "GET    /api/run/{session_id}/stats",
                 "info":    "GET    /api/run/{session_id}",
                 "stop":    "DELETE /api/run/{session_id}",
+            },
+            "negotiations": {
+                "create":    "POST   /api/negotiations",
+                "list":      "GET    /api/negotiations",
+                "get":       "GET    /api/negotiations/{session_id}",
+                "update":    "PATCH  /api/negotiations/{session_id}",
+                "proposals": "POST   /api/negotiations/{session_id}/proposals",
+                "commits":   "POST   /api/negotiations/{session_id}/commits",
+                "feedback":  "POST   /api/negotiations/{session_id}/feedback",
             },
         },
     }

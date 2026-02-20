@@ -13,9 +13,12 @@ import json
 import uuid
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from datetime import datetime
 from dataclasses import dataclass, asdict
+
+if TYPE_CHECKING:
+    from graphbus_core.agents.negotiation_client import NegotiationClient
 
 
 @dataclass
@@ -63,13 +66,19 @@ class NegotiationSessionManager:
             └── context.json      # Session context and metadata
     """
 
-    def __init__(self, project_root: str = "."):
+    def __init__(
+        self,
+        project_root: str = ".",
+        remote_client: Optional["NegotiationClient"] = None,
+    ):
         """
         Initialize session manager.
 
         Args:
             project_root: Root directory of the project (where .graphbus/ will be created)
+            remote_client: Optional NegotiationClient for dual-write to a remote web service
         """
+        self.remote_client = remote_client
         self.project_root = Path(project_root).resolve()
         self.graphbus_dir = self.project_root / ".graphbus"
         self.negotiations_dir = self.graphbus_dir / "negotiations"
@@ -195,6 +204,13 @@ class NegotiationSessionManager:
         print(f"  Branch: {branch_name}")
         print(f"  Directory: {session_dir}")
 
+        # Dual-write to remote if configured
+        if self.remote_client is not None:
+            try:
+                self.remote_client.create_session(intent)
+            except Exception as exc:
+                print(f"  [SessionManager] Warning: remote create_session failed: {exc}")
+
         return session
 
     def get_session(self, session_id: str) -> Optional[NegotiationSession]:
@@ -248,6 +264,13 @@ class NegotiationSessionManager:
         with open(proposals_file, 'w') as f:
             json.dump(data, f, indent=2)
 
+        # Dual-write to remote
+        if self.remote_client is not None:
+            try:
+                self.remote_client.record_proposal(session_id, proposal)
+            except Exception as exc:
+                print(f"  [SessionManager] Warning: remote record_proposal failed: {exc}")
+
     def record_commit(self, session_id: str, commit_record: Dict) -> None:
         """Record a commit made during negotiation"""
         commits_file = self.negotiations_dir / session_id / "commits.json"
@@ -265,6 +288,13 @@ class NegotiationSessionManager:
             self.sessions[session_id].commit_count += 1
             self._save_index()
 
+        # Dual-write to remote
+        if self.remote_client is not None:
+            try:
+                self.remote_client.record_commit(session_id, commit_record)
+            except Exception as exc:
+                print(f"  [SessionManager] Warning: remote record_commit failed: {exc}")
+
     def update_session(self, session_id: str, **kwargs) -> None:
         """Update session fields"""
         if session_id not in self.sessions:
@@ -276,6 +306,13 @@ class NegotiationSessionManager:
                 setattr(session, key, value)
 
         self._save_index()
+
+        # Dual-write to remote
+        if self.remote_client is not None:
+            try:
+                self.remote_client.update_session(session_id, **kwargs)
+            except Exception as exc:
+                print(f"  [SessionManager] Warning: remote update_session failed: {exc}")
 
     def _write_session_file(self, session_id: str, filename: str, data: Any) -> None:
         """Write JSON file to session directory"""
@@ -294,6 +331,22 @@ class NegotiationSessionManager:
 
     def get_session_context(self, session_id: str) -> Dict:
         """Get full context for a session (for PR description, etc.)"""
+        # If remote client is configured, fetch from remote and merge
+        if self.remote_client is not None:
+            try:
+                remote_session = self.remote_client.get_session(session_id)
+                remote_proposals = self.remote_client.get_proposals(session_id)
+                remote_commits = self.remote_client.get_commits(session_id)
+                if remote_session is not None:
+                    return {
+                        **remote_session,
+                        "proposals": remote_proposals,
+                        "commits": remote_commits,
+                    }
+            except Exception as exc:
+                print(f"  [SessionManager] Warning: remote get_session_context failed, falling back to local: {exc}")
+
+        # Local fallback
         context = self._read_session_file(session_id, "context.json") or {}
         proposals = self._read_session_file(session_id, "proposals.json") or {"proposals": []}
         commits = self._read_session_file(session_id, "commits.json") or {"commits": []}
@@ -303,6 +356,23 @@ class NegotiationSessionManager:
             "proposals": proposals["proposals"],
             "commits": commits["commits"]
         }
+
+    @classmethod
+    def from_env(cls, project_root: str = ".") -> "NegotiationSessionManager":
+        """
+        Create a NegotiationSessionManager, optionally with a remote client
+        if GRAPHBUS_NEGOTIATIONS_URL and GRAPHBUS_API_KEY env vars are set.
+        """
+        remote_client = None
+        negotiations_url = os.environ.get("GRAPHBUS_NEGOTIATIONS_URL", "").strip()
+        api_key = os.environ.get("GRAPHBUS_API_KEY", "").strip()
+
+        if negotiations_url and api_key:
+            from graphbus_core.agents.negotiation_client import NegotiationClient
+            remote_client = NegotiationClient(base_url=negotiations_url, api_key=api_key)
+            print(f"[SessionManager] Remote backend enabled: {negotiations_url}")
+
+        return cls(project_root=project_root, remote_client=remote_client)
 
     def get_latest_session_with_pr(self, intent_keywords: List[str] = None) -> Optional[NegotiationSession]:
         """
