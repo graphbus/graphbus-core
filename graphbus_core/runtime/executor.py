@@ -294,17 +294,21 @@ class RuntimeExecutor:
         # Log method call for dashboard
         self._log_method_call(node_name, method_name, kwargs)
 
-        # Call the method
+        # Call the method, always recording duration even when an exception is raised.
+        # Without try/finally a failed call leaves duration_ms: 0 in the dashboard,
+        # hiding how long the method ran before it crashed.
         start_time = time.time()
-        result = method(**kwargs)
-        duration = time.time() - start_time
-
-        # Update method log with result
-        if self._method_call_history:
-            self._method_call_history[-1]['duration_ms'] = duration * 1000
-            self._method_call_history[-1]['success'] = True
-
-        return result
+        try:
+            result = method(**kwargs)
+            if self._method_call_history:
+                self._method_call_history[-1]['success'] = True
+            return result
+        except Exception:
+            raise  # re-raise unchanged; caller/health-monitor handles it
+        finally:
+            duration = time.time() - start_time
+            if self._method_call_history:
+                self._method_call_history[-1]['duration_ms'] = duration * 1000
 
     def publish(
         self,
