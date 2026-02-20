@@ -2,6 +2,7 @@
 PrinterService - Prints messages to console
 """
 
+from datetime import datetime
 from graphbus_core import GraphBusNode, schema_method
 
 
@@ -18,6 +19,8 @@ class PrinterService(GraphBusNode):
     )
     def print_message(self, message: str):
         """Print a message to the console."""
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("message must be a non-empty string")
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {message}")

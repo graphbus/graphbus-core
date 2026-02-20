@@ -1,0 +1,39 @@
+{
+  "agent_name": "SpecParserAgent",
+  "version": "1.0.0",
+  "methods": {
+    "parse_spec": {
+      "input": {
+        "spec": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "output": {
+        "endpoints": {
+          "type": "<class 'list'>",
+          "required": true,
+          "default": null
+        },
+        "models": {
+          "type": "<class 'list'>",
+          "required": true,
+          "default": null
+        },
+        "auth_required": {
+          "type": "<class 'bool'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "description": "Parse a plain-English spec string into structured API requirements."
+    }
+  },
+  "publishes": {},
+  "subscribes": [
+    "/Pipeline/SpecSubmitted"
+  ],
+  "description": "Auto-generated contract for SpecParserAgent",
+  "timestamp": "2026-02-20T15:01:35.735610"
+}

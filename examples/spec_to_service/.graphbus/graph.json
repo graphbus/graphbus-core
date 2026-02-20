@@ -1,0 +1,154 @@
+{
+  "nodes": [
+    {
+      "name": "ModelAgent",
+      "data": {
+        "module": "examples.spec_to_service.agents.model",
+        "class_name": "ModelAgent",
+        "source_file": "/home/ubuntu/workbench/graphbus-core/examples/spec_to_service/agents/model.py",
+        "system_prompt": "You generate Pydantic models from data model specifications.",
+        "methods": [
+          "generate_models"
+        ],
+        "subscriptions": [],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "OrchestratorAgent",
+      "data": {
+        "module": "examples.spec_to_service.agents.orchestrator",
+        "class_name": "OrchestratorAgent",
+        "source_file": "/home/ubuntu/workbench/graphbus-core/examples/spec_to_service/agents/orchestrator.py",
+        "system_prompt": "You coordinate the full spec-to-service pipeline.",
+        "methods": [
+          "build_service"
+        ],
+        "subscriptions": [],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "RouterAgent",
+      "data": {
+        "module": "examples.spec_to_service.agents.router",
+        "class_name": "RouterAgent",
+        "source_file": "/home/ubuntu/workbench/graphbus-core/examples/spec_to_service/agents/router.py",
+        "system_prompt": "You generate FastAPI router code from endpoint specifications.",
+        "methods": [
+          "generate_router"
+        ],
+        "subscriptions": [],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "SpecParserAgent",
+      "data": {
+        "module": "examples.spec_to_service.agents.spec_parser",
+        "class_name": "SpecParserAgent",
+        "source_file": "/home/ubuntu/workbench/graphbus-core/examples/spec_to_service/agents/spec_parser.py",
+        "system_prompt": "You extract structured API requirements from plain-English specs.",
+        "methods": [
+          "parse_spec"
+        ],
+        "subscriptions": [
+          "/Pipeline/SpecSubmitted"
+        ],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "TestAgent",
+      "data": {
+        "module": "examples.spec_to_service.agents.test_writer",
+        "class_name": "TestAgent",
+        "source_file": "/home/ubuntu/workbench/graphbus-core/examples/spec_to_service/agents/test_writer.py",
+        "system_prompt": "You write pytest test stubs for FastAPI endpoints.",
+        "methods": [
+          "generate_tests"
+        ],
+        "subscriptions": [
+          "/Service/Generated"
+        ],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "/Pipeline/SpecSubmitted",
+      "data": {
+        "node_type": "topic"
+      }
+    },
+    {
+      "name": "/Service/Generated",
+      "data": {
+        "node_type": "topic"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "src": "ModelAgent",
+      "dst": "SpecParserAgent",
+      "data": {
+        "edge_type": "depends_on",
+        "reason": "explicit @depends_on"
+      }
+    },
+    {
+      "src": "OrchestratorAgent",
+      "dst": "RouterAgent",
+      "data": {
+        "edge_type": "depends_on",
+        "reason": "explicit @depends_on"
+      }
+    },
+    {
+      "src": "OrchestratorAgent",
+      "dst": "ModelAgent",
+      "data": {
+        "edge_type": "depends_on",
+        "reason": "explicit @depends_on"
+      }
+    },
+    {
+      "src": "OrchestratorAgent",
+      "dst": "TestAgent",
+      "data": {
+        "edge_type": "depends_on",
+        "reason": "explicit @depends_on"
+      }
+    },
+    {
+      "src": "RouterAgent",
+      "dst": "SpecParserAgent",
+      "data": {
+        "edge_type": "depends_on",
+        "reason": "explicit @depends_on"
+      }
+    },
+    {
+      "src": "TestAgent",
+      "dst": "RouterAgent",
+      "data": {
+        "edge_type": "depends_on",
+        "reason": "explicit @depends_on"
+      }
+    },
+    {
+      "src": "/Pipeline/SpecSubmitted",
+      "dst": "SpecParserAgent",
+      "data": {
+        "edge_type": "subscribes"
+      }
+    },
+    {
+      "src": "/Service/Generated",
+      "dst": "TestAgent",
+      "data": {
+        "edge_type": "subscribes"
+      }
+    }
+  ]
+}

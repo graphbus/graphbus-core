@@ -1,0 +1,37 @@
+{
+  "agent_name": "OrchestratorAgent",
+  "version": "1.0.0",
+  "methods": {
+    "build_service": {
+      "input": {
+        "spec": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        },
+        "service_name": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "output": {
+        "output_dir": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        },
+        "files_written": {
+          "type": "<class 'list'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "description": "Run the full spec-to-service pipeline and write output files."
+    }
+  },
+  "publishes": {},
+  "subscribes": [],
+  "description": "Auto-generated contract for OrchestratorAgent",
+  "timestamp": "2026-02-20T15:01:35.728424"
+}

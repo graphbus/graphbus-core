@@ -18,4 +18,6 @@ class HelloService(GraphBusNode):
     )
     def generate_message(self, name="World"):
         """Generate a personalized greeting message."""
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("'name' must be a non-empty string")
         return {"message": f"Hello, {name}!"}

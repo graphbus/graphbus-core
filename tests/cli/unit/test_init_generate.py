@@ -215,9 +215,9 @@ class TestGenerateCommand:
 
         # Check for expected content
         assert "class OrderProcessor" in content
-        assert "@agent" in content
-        assert "from graphbus_core.node_base import NodeBase" in content
-        assert "from graphbus_core.decorators import agent" in content
+        assert "GraphBusNode" in content
+        assert "from graphbus_core" in content
+        assert "SYSTEM_PROMPT" in content
 
     def test_generate_agent_with_methods(self, runner, temp_dir):
         """Test generating agent with custom methods"""

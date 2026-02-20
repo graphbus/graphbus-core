@@ -23,6 +23,7 @@ setup(
     entry_points={
         "console_scripts": [
             "graphbus=graphbus_cli.main:cli",
+            "graphbus-agent=graphbus_agent.__main__:main",
         ],
     },
     classifiers=[

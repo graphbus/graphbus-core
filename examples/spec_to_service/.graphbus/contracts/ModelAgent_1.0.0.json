@@ -1,0 +1,27 @@
+{
+  "agent_name": "ModelAgent",
+  "version": "1.0.0",
+  "methods": {
+    "generate_models": {
+      "input": {
+        "models": {
+          "type": "<class 'list'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "output": {
+        "models_code": {
+          "type": "<class 'str'>",
+          "required": true,
+          "default": null
+        }
+      },
+      "description": "Generate Pydantic model code from a list of model definitions."
+    }
+  },
+  "publishes": {},
+  "subscribes": [],
+  "description": "Auto-generated contract for ModelAgent",
+  "timestamp": "2026-02-20T15:01:35.726958"
+}
