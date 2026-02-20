@@ -13,3 +13,6 @@ websockets>=12.0
 
 # TUI dependencies (optional)
 textual>=0.47.0
+
+# Runtime profiling
+psutil>=5.9.0
