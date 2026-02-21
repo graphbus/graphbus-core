@@ -5,7 +5,7 @@ Monitors agent health and handles failures with automatic recovery.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Callable
 from enum import Enum
 import time
@@ -36,7 +36,7 @@ class HealthMetrics:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
 
     @property
     def error_rate(self) -> float:
@@ -107,7 +107,7 @@ class RestartPolicy:
             return True
 
         # Get recent restarts within window
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - self.restart_window
         recent_restarts = [
             ts for ts in self.restart_history[node_name]
@@ -124,7 +124,7 @@ class RestartPolicy:
         if node_name not in self.restart_history:
             self.restart_history[node_name] = []
 
-        self.restart_history[node_name].append(datetime.utcnow())
+        self.restart_history[node_name].append(datetime.now(timezone.utc))
 
     def get_restart_delay(self, node_name: str) -> float:
         """
@@ -203,7 +203,7 @@ class HealthMonitor:
         metrics.total_calls += 1
         metrics.successful_calls += 1
         metrics.consecutive_failures = 0
-        metrics.last_success_time = datetime.utcnow()
+        metrics.last_success_time = datetime.now(timezone.utc)
 
         # Update status
         self._update_status(node_name)
@@ -227,7 +227,7 @@ class HealthMonitor:
         metrics.failed_calls += 1
         metrics.consecutive_failures += 1
         metrics.last_error = str(error)
-        metrics.last_error_time = datetime.utcnow()
+        metrics.last_error_time = datetime.now(timezone.utc)
 
         # Update status
         old_status = metrics.status

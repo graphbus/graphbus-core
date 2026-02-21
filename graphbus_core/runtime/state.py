@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class StateManager:
@@ -48,7 +48,7 @@ class StateManager:
         # Add metadata
         state_with_meta = {
             "node_name": node_name,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": "1.0",
             "state": state
         }

@@ -9,7 +9,7 @@ import importlib
 import importlib.util
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class HotReloadManager:
@@ -122,7 +122,7 @@ class HotReloadManager:
             # Record reload
             reload_info = {
                 "node_name": node_name,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "module": module_name,
                 "class": class_name,
                 "state_preserved": saved_state is not None,
@@ -136,7 +136,7 @@ class HotReloadManager:
             # Record failed reload
             reload_info = {
                 "node_name": node_name,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": str(e),
                 "success": False
             }
@@ -226,7 +226,7 @@ class HotReloadManager:
                     return
 
                 # Debounce: only reload if >2 seconds since last reload
-                now = datetime.utcnow().timestamp()
+                now = datetime.now(timezone.utc).timestamp()
                 if event.src_path in self.last_reload:
                     if now - self.last_reload[event.src_path] < 2.0:
                         return
