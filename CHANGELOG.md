@@ -9,6 +9,12 @@ Version scheme: `MAJOR.MINOR.PATCH-stage` (currently pre-1.0 alpha).
 
 ## [Unreleased]
 
+### Changed
+- **`RuntimeExecutor` error messages** — all `ValueError` / `RuntimeError` raises now include
+  actionable context: unknown node names print the list of loaded nodes, unknown method names
+  print the node's `@schema_method` inventory, and "not started / not enabled" errors include
+  the corrective call needed. Aids debugging without requiring a debugger or docs lookup.
+
 ### Planned
 - PyPI release (`pip install graphbus`)
 - OpenAI and Ollama LLM backends
