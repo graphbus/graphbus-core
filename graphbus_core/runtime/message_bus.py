@@ -3,7 +3,7 @@ Message Bus - Simple pub/sub routing for Runtime Mode
 """
 
 from typing import Dict, List, Callable, Any
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from graphbus_core.model.message import Event, generate_id
 from graphbus_core.model.topic import Topic
@@ -25,9 +25,11 @@ class MessageBus:
         # topic_name -> list of (handler, subscriber_name)
         self._subscriptions: Dict[str, List[tuple[Callable, str]]] = defaultdict(list)
 
-        # Message history for debugging/monitoring
-        self._message_history: List[Event] = []
+        # Message history for debugging/monitoring.
+        # deque(maxlen=N) automatically evicts the oldest entry on append
+        # when full — O(1) vs the O(n) list.pop(0) that a plain list requires.
         self._max_history = 1000  # Keep last 1000 events
+        self._message_history: deque[Event] = deque(maxlen=self._max_history)
 
         # Statistics
         self._stats = {
@@ -144,11 +146,8 @@ class MessageBus:
         return list(self._subscriptions.keys())
 
     def _add_to_history(self, event: Event) -> None:
-        """Add event to history, maintaining max size."""
+        """Add event to history; deque(maxlen) evicts the oldest entry automatically."""
         self._message_history.append(event)
-        if len(self._message_history) > self._max_history:
-            # Remove oldest event
-            self._message_history.pop(0)
 
     def get_message_history(self, limit: int = 100) -> List[Event]:
         """
@@ -160,7 +159,9 @@ class MessageBus:
         Returns:
             List of recent Event objects (newest first)
         """
-        return list(reversed(self._message_history[-limit:]))
+        # deque doesn't support slicing — convert to list first
+        history = list(self._message_history)
+        return list(reversed(history[-limit:]))
 
     def get_stats(self) -> Dict[str, int]:
         """
