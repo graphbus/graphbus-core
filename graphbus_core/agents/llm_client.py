@@ -1,132 +1,206 @@
 """
-LLM client abstraction - minimal Anthropic integration
+LLM client abstraction — supports DeepSeek (default) and Anthropic.
+
+Provider is inferred from the model name:
+  - "deepseek-*"           → DeepSeek API  (OpenAI-compatible, needs DEEPSEEK_API_KEY)
+  - "claude-*"             → Anthropic API (needs ANTHROPIC_API_KEY)
+  - anything else          → treated as OpenAI-compatible (needs OPENAI_API_KEY or
+                             set base_url + api_key explicitly)
+
+Environment variables:
+  DEEPSEEK_API_KEY    — for deepseek-* models
+  ANTHROPIC_API_KEY   — for claude-* models
+  OPENAI_API_KEY      — fallback for other models
 """
 
 import os
 from typing import Optional
-from anthropic import Anthropic
+
 from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
+
+DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+
+
+def _infer_provider(model: str) -> str:
+    if model.startswith("deepseek"):
+        return "deepseek"
+    if model.startswith("claude"):
+        return "anthropic"
+    return "openai"
 
 
 class LLMClient:
     """
-    Simple wrapper around Anthropic API for agent use.
+    Provider-agnostic LLM client for GraphBus agent negotiation.
+
+    Default model: DeepSeek R1 (deepseek-reasoner) — strong reasoning,
+    cost-effective for the proposal/evaluate/vote negotiation cycle.
     """
 
     def __init__(
         self,
         model: str = DEFAULT_LLM_MODEL,
         api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         temperature: float = DEFAULT_TEMPERATURE,
-        max_tokens: int = DEFAULT_MAX_TOKENS
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ):
-        """
-        Initialize LLM client.
-
-        Args:
-            model: Model to use (default: from DEFAULT_LLM_MODEL constant)
-            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
-            temperature: Sampling temperature
-            max_tokens: Max tokens to generate
-        """
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self._provider = _infer_provider(model)
 
-        # Get API key from parameter or environment
-        api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
+        if self._provider == "anthropic":
+            self._init_anthropic(api_key)
+        else:
+            self._init_openai_compatible(api_key, base_url)
+
+    # ── Initialisation ─────────────────────────────────────────────────────
+
+    def _init_anthropic(self, api_key: Optional[str]) -> None:
+        from anthropic import Anthropic
+        key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
             raise ValueError(
-                "Anthropic API key required. Set ANTHROPIC_API_KEY environment variable "
-                "or pass api_key parameter."
+                "Anthropic API key required for claude-* models. "
+                "Set ANTHROPIC_API_KEY or pass api_key."
             )
+        self._client = Anthropic(api_key=key)
 
-        self.client = Anthropic(api_key=api_key)
+    def _init_openai_compatible(self, api_key: Optional[str], base_url: Optional[str]) -> None:
+        from openai import OpenAI
+
+        if self._provider == "deepseek":
+            key = api_key or os.environ.get("DEEPSEEK_API_KEY")
+            url = base_url or DEEPSEEK_BASE_URL
+            if not key:
+                raise ValueError(
+                    "DeepSeek API key required for deepseek-* models. "
+                    "Set DEEPSEEK_API_KEY or pass api_key."
+                )
+        else:
+            key = api_key or os.environ.get("OPENAI_API_KEY", "")
+            url = base_url  # None = default OpenAI endpoint
+
+        kwargs = {"api_key": key}
+        if url:
+            kwargs["base_url"] = url
+        self._client = OpenAI(**kwargs)
+
+    # ── Public API ──────────────────────────────────────────────────────────
 
     def generate(self, prompt: str, system: Optional[str] = None) -> str:
-        """
-        Generate a response from the LLM.
+        """Generate a response. Returns the text content."""
+        if self._provider == "anthropic":
+            return self._generate_anthropic(prompt, system)
+        return self._generate_openai(prompt, system)
 
-        Args:
-            prompt: User prompt
-            system: Optional system prompt
+    def generate_with_tool(
+        self,
+        prompt: str,
+        tool_name: str,
+        tool_schema: dict,
+        system: Optional[str] = None,
+    ) -> dict:
+        """Generate a structured response using tool/function calling."""
+        if self._provider == "anthropic":
+            return self._generate_tool_anthropic(prompt, tool_name, tool_schema, system)
+        return self._generate_tool_openai(prompt, tool_name, tool_schema, system)
 
-        Returns:
-            Generated text
-        """
+    # ── Anthropic ───────────────────────────────────────────────────────────
+
+    def _generate_anthropic(self, prompt: str, system: Optional[str]) -> str:
         try:
-            message = self.client.messages.create(
+            msg = self._client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                system=system if system else "",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                system=system or "",
+                messages=[{"role": "user", "content": prompt}],
             )
-
-            # Extract text from response
-            if message.content and len(message.content) > 0:
-                response_text = message.content[0].text
-                # Debug: Print first 200 chars of response for troubleshooting
-                # print(f"[LLM Response Preview]: {response_text[:200]}...")
-                return response_text
-            else:
-                print(f"Warning: Empty response from LLM. Message: {message}")
-                return ""
-
+            if msg.content:
+                return msg.content[0].text
+            print(f"Warning: empty Anthropic response. Raw: {msg}")
+            return ""
         except Exception as e:
-            print(f"Error calling Anthropic API: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Anthropic API error: {e}")
             raise
 
-    def generate_with_tool(self, prompt: str, tool_name: str, tool_schema: dict, system: Optional[str] = None) -> dict:
-        """
-        Generate a structured response using Claude's tool use feature.
-
-        Args:
-            prompt: User prompt
-            tool_name: Name of the tool to use
-            tool_schema: JSON schema for the tool's input_schema
-            system: Optional system prompt
-
-        Returns:
-            Parsed tool use result as dictionary
-        """
+    def _generate_tool_anthropic(
+        self, prompt: str, tool_name: str, tool_schema: dict, system: Optional[str]
+    ) -> dict:
         try:
-            # Build the tool definition
-            tool_definition = {
+            tool_def = {
                 "name": tool_name,
-                "description": f"Use this tool to provide structured output for {tool_name}",
-                "input_schema": tool_schema
+                "description": f"Structured output for {tool_name}",
+                "input_schema": tool_schema,
             }
-
-            message = self.client.messages.create(
+            msg = self._client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                system=system if system else "",
-                tools=[tool_definition],
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                system=system or "",
+                tools=[tool_def],
+                messages=[{"role": "user", "content": prompt}],
             )
-
-            # Extract tool use result
-            if message.content and len(message.content) > 0:
-                for block in message.content:
-                    if block.type == "tool_use":
-                        # Return the input that was passed to the tool
-                        return block.input
-
-                # If no tool use found, raise error
-                raise ValueError(f"No tool use found in response. Got: {message.content}")
-            else:
-                raise ValueError("Empty response from LLM")
-
+            for block in msg.content or []:
+                if block.type == "tool_use":
+                    return block.input
+            raise ValueError(f"No tool_use block in Anthropic response: {msg.content}")
         except Exception as e:
-            print(f"Error calling Anthropic API with tool: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Anthropic tool API error: {e}")
+            raise
+
+    # ── OpenAI-compatible (DeepSeek / OpenAI) ──────────────────────────────
+
+    def _generate_openai(self, prompt: str, system: Optional[str]) -> str:
+        try:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            )
+            return resp.choices[0].message.content or ""
+        except Exception as e:
+            print(f"OpenAI-compatible API error ({self._provider}): {e}")
+            raise
+
+    def _generate_tool_openai(
+        self, prompt: str, tool_name: str, tool_schema: dict, system: Optional[str]
+    ) -> dict:
+        import json
+        try:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+
+            tool_def = {
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": f"Structured output for {tool_name}",
+                    "parameters": tool_schema,
+                },
+            }
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=[tool_def],
+                tool_choice={"type": "function", "function": {"name": tool_name}},
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            )
+            tool_call = resp.choices[0].message.tool_calls
+            if tool_call:
+                return json.loads(tool_call[0].function.arguments)
+            raise ValueError(f"No tool call in response: {resp.choices[0].message}")
+        except Exception as e:
+            print(f"OpenAI-compatible tool API error ({self._provider}): {e}")
             raise
