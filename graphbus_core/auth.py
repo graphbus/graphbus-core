@@ -1,15 +1,18 @@
 """
 graphbus_core.auth — API key management and interactive onboarding.
 
-Flow (same order every time):
-  1. GRAPHBUS_API_KEY environment variable
-  2. ~/.graphbus/credentials.json  (written by the onboarding prompt)
-  3. Interactive first-run onboarding — asks for key, optionally opens browser,
-     validates format, saves to credentials file, sets env var for the process.
+Onboarding flow (runs once, on first command):
+  1. Show welcome banner
+  2. Prompt for GRAPHBUS_API_KEY — fully blocking, no skip
+  3. Prompt for preferred LLM model (model choice saved; key NOT stored)
+  4. Save both to ~/.graphbus/credentials.json (mode 600)
 
-Usage (CLI, run.py, build.py, tests):
-    from graphbus_core.auth import ensure_api_key
-    api_key = ensure_api_key()   # always returns a non-empty string or sys.exit(1)
+Subsequent runs:
+  - Key and model preference loaded silently from credentials file or env
+  - LLM provider key checked at runtime via check_llm_key()
+
+LLM API keys (Anthropic, DeepSeek, OpenAI, etc.) are NEVER stored here.
+Set them in your shell environment or .env file.
 """
 
 from __future__ import annotations
@@ -19,7 +22,6 @@ import os
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -28,40 +30,54 @@ from typing import Optional
 CREDENTIALS_PATH: Path = Path.home() / ".graphbus" / "credentials.json"
 ONBOARDING_URL: str = "https://graphbus.com/onboarding"
 _KEY_PREFIX: str = "gb_"
-_KEY_MIN_LEN: int = 16   # gb_ + 13 chars minimum
+_KEY_MIN_LEN: int = 16  # gb_ + 13 chars minimum
+
+# Supported LLM models: display name → (env_var, model_string)
+LLM_MODELS: dict[str, tuple[str, str]] = {
+    "1": ("DeepSeek R1  (recommended)", "DEEPSEEK_API_KEY",  "deepseek/deepseek-reasoner"),
+    "2": ("Claude Sonnet",              "ANTHROPIC_API_KEY", "claude-sonnet-4-5"),
+    "3": ("GPT-4o",                     "OPENAI_API_KEY",    "gpt-4o"),
+    "4": ("OpenRouter  (any model)",    "OPENROUTER_API_KEY","openrouter/auto"),
+}
+DEFAULT_MODEL_KEY = "deepseek/deepseek-reasoner"
+DEFAULT_MODEL_ENV = "DEEPSEEK_API_KEY"
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Credentials file helpers
 # ---------------------------------------------------------------------------
 
-def _load_stored_key() -> str:
-    """Return the key stored in ~/.graphbus/credentials.json, or ''."""
+def _load_credentials() -> dict:
+    """Return the full credentials dict, or {} on any error."""
     try:
         if CREDENTIALS_PATH.exists():
-            data = json.loads(CREDENTIALS_PATH.read_text())
-            return data.get("api_key", "").strip()
+            return json.loads(CREDENTIALS_PATH.read_text())
     except Exception:
         pass
-    return ""
+    return {}
 
 
-def _save_key(api_key: str) -> None:
-    """Persist *api_key* to ~/.graphbus/credentials.json (mode 600)."""
+def _save_credentials(data: dict) -> None:
+    """Write *data* to the credentials file (mode 600)."""
     CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing: dict = {}
-    if CREDENTIALS_PATH.exists():
-        try:
-            existing = json.loads(CREDENTIALS_PATH.read_text())
-        except Exception:
-            pass
-    existing["api_key"] = api_key
-    CREDENTIALS_PATH.write_text(json.dumps(existing, indent=2))
+    CREDENTIALS_PATH.write_text(json.dumps(data, indent=2))
     CREDENTIALS_PATH.chmod(0o600)
 
 
+def _load_stored_key() -> str:
+    return _load_credentials().get("api_key", "").strip()
+
+
+def _load_stored_model() -> tuple[str, str]:
+    """Return (model_string, env_var) from credentials, or defaults."""
+    creds = _load_credentials()
+    return (
+        creds.get("model", DEFAULT_MODEL_KEY),
+        creds.get("model_env_var", DEFAULT_MODEL_ENV),
+    )
+
+
 def _validate_key_format(key: str) -> bool:
-    """Return True if *key* looks like a GraphBus API key."""
     return (
         isinstance(key, str)
         and key.startswith(_KEY_PREFIX)
@@ -71,149 +87,198 @@ def _validate_key_format(key: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Rich helpers (graceful fallback if rich is not installed)
+# Rich helpers (graceful plain-text fallback)
 # ---------------------------------------------------------------------------
 
-def _print_banner() -> None:
-    """Print the welcome / onboarding banner."""
+def _con():
     try:
         from rich.console import Console
+        return Console()
+    except ImportError:
+        return None
+
+
+def _print(console, msg: str, *, plain: str | None = None) -> None:
+    if console:
+        console.print(msg)
+    else:
+        print(plain or msg)
+
+
+def _print_banner(console=None) -> None:
+    c = console or _con()
+    if c:
         from rich.panel import Panel
         from rich.text import Text
-
-        console = Console()
-        title = Text("GraphBus", style="bold cyan")
         body = Text.assemble(
             ("Multi-agent orchestration for your codebase.\n\n", ""),
-            ("To get started you need a ", ""),
+            ("To continue you need a ", ""),
             ("GraphBus API key", "bold"),
             (".\n\n", ""),
             ("  Get yours free → ", "dim"),
             (ONBOARDING_URL, "bold cyan underline"),
         )
-        console.print()
-        console.print(Panel(body, title=title, border_style="cyan", padding=(1, 3)))
-        console.print()
-    except ImportError:
-        # Fallback: plain ANSI
-        cyan = "\033[96m"
-        bold = "\033[1m"
-        reset = "\033[0m"
-        dim = "\033[2m"
+        c.print()
+        c.print(Panel(body, title="[bold cyan]GraphBus[/bold cyan]",
+                      border_style="cyan", padding=(1, 3)))
+        c.print()
+    else:
         line = "─" * 58
-        print(f"\n{cyan}{line}{reset}")
-        print(f"  {bold}GraphBus{reset}  —  multi-agent orchestration")
-        print(f"{cyan}{line}{reset}")
-        print(f"  To get started, you need a {bold}GraphBus API key{reset}.")
-        print(f"  {dim}Get yours free → {reset}{cyan}{ONBOARDING_URL}{reset}\n")
+        print(f"\n\033[96m{line}\033[0m")
+        print("  \033[1mGraphBus\033[0m  —  multi-agent orchestration")
+        print(f"\033[96m{line}\033[0m")
+        print("  To continue you need a \033[1mGraphBus API key\033[0m.")
+        print(f"  Get yours free → \033[96m{ONBOARDING_URL}\033[0m\n")
 
 
-def _prompt_for_key(console=None) -> Optional[str]:
+def _prompt_for_graphbus_key(console=None) -> str:
     """
-    Interactive prompt loop.  Returns a valid key string, or None if the
-    user chose to skip.
+    Blocking prompt — loops until a valid key is entered.
+    No skip option. Returns the validated key.
     """
-    try:
-        from rich.console import Console
-        from rich.prompt import Prompt, Confirm
-        _con = console or Console()
-    except ImportError:
-        _con = None
+    c = console or _con()
 
-    def _ask(prompt_text: str, default: str = "") -> str:
-        if _con:
-            return Prompt.ask(f"[bold]{prompt_text}[/bold]", default=default)
-        return input(f"{prompt_text}: ").strip()
+    def _ask(text: str) -> str:
+        if c:
+            from rich.prompt import Prompt
+            return Prompt.ask(f"[bold]{text}[/bold]")
+        return input(f"{text}: ").strip()
 
-    def _confirm(prompt_text: str) -> bool:
-        if _con:
+    def _confirm(text: str) -> bool:
+        if c:
             from rich.prompt import Confirm
-            return Confirm.ask(f"[bold]{prompt_text}[/bold]")
-        ans = input(f"{prompt_text} [y/N]: ").strip().lower()
-        return ans in ("y", "yes")
+            return Confirm.ask(f"[bold]{text}[/bold]")
+        return input(f"{text} [y/N]: ").strip().lower() in ("y", "yes")
 
-    # Offer to open the browser first
     if _confirm("Open graphbus.com/onboarding in your browser?"):
         webbrowser.open(ONBOARDING_URL)
-        if _con:
-            _con.print(
-                "\n[dim]Sign up, copy your API key, then come back here.[/dim]\n"
-            )
-        else:
-            print("\nSign up, copy your API key, then come back here.\n")
+        _print(c, "\n[dim]Sign up, copy your key, then come back here.[/dim]\n",
+               plain="\nSign up, copy your key, then come back here.\n")
 
     while True:
-        raw = _ask("Paste your GraphBus API key (or 'skip' to continue without)")
-        stripped = raw.strip()
-
-        if stripped.lower() in ("skip", "s", ""):
-            return None
-
-        if _validate_key_format(stripped):
-            return stripped
-
-        msg = (
-            f"[yellow]⚠  That doesn't look like a valid GraphBus key "
-            f"(expected {_KEY_PREFIX}…).[/yellow]\n"
-            "   Check your key at graphbus.com/onboarding or type 'skip'."
+        raw = _ask("Paste your GraphBus API key").strip()
+        if _validate_key_format(raw):
+            return raw
+        _print(
+            c,
+            f"[yellow]⚠  Invalid key format (expected [bold]{_KEY_PREFIX}…[/bold]).[/yellow]\n"
+            "   Double-check at graphbus.com/onboarding and try again.",
+            plain=f"⚠  Invalid key format (expected {_KEY_PREFIX}...). Try again.",
         )
-        if _con:
-            _con.print(msg)
-        else:
-            print(f"⚠  That doesn't look like a valid GraphBus key (expected {_KEY_PREFIX}...).")
-            print("   Check your key at graphbus.com/onboarding or type 'skip'.")
 
 
-def _print_success(key: str) -> None:
+def _prompt_for_model(console=None) -> tuple[str, str]:
+    """
+    Let the user pick their preferred LLM model for Build Mode.
+    Returns (model_string, env_var_name).
+    LLM API keys are NOT requested or stored here.
+    """
+    c = console or _con()
+
+    if c:
+        from rich.table import Table
+        c.print("\n[bold]Choose your preferred LLM model for Build Mode:[/bold]\n")
+        t = Table(show_header=False, box=None, padding=(0, 2))
+        t.add_column("Num", style="bold cyan")
+        t.add_column("Model")
+        t.add_column("Env var needed", style="dim")
+        for num, (label, env_var, _) in LLM_MODELS.items():
+            t.add_row(num, label, env_var)
+        c.print(t)
+        c.print()
+        from rich.prompt import Prompt
+        choice = Prompt.ask(
+            "[bold]Enter number[/bold]",
+            choices=list(LLM_MODELS.keys()),
+            default="1",
+        )
+    else:
+        print("\nChoose your preferred LLM model for Build Mode:\n")
+        for num, (label, env_var, _) in LLM_MODELS.items():
+            print(f"  {num}. {label}  ({env_var})")
+        print()
+        while True:
+            choice = input("Enter number [1]: ").strip() or "1"
+            if choice in LLM_MODELS:
+                break
+            print("Invalid choice. Enter 1, 2, 3, or 4.")
+
+    label, env_var, model_str = LLM_MODELS[choice]
+
+    # Check if the env var already exists — inform but don't block or store the key
+    if os.getenv(env_var, "").strip():
+        _print(c, f"\n[green]✓[/green]  {env_var} found in environment.",
+               plain=f"\n✓  {env_var} found in environment.")
+    else:
+        _print(
+            c,
+            f"\n[yellow]ℹ[/yellow]  {env_var} not set yet.\n"
+            f"   Add it to your shell or .env file before running Build Mode:\n"
+            f"     [dim]export {env_var}=your_key_here[/dim]",
+            plain=f"\nℹ  {env_var} not set yet.\n"
+                  f"   export {env_var}=your_key_here",
+        )
+
+    return model_str, env_var
+
+
+def _print_success(key: str, console=None) -> None:
+    c = console or _con()
     masked = key[:8] + "…"
-    try:
-        from rich.console import Console
-        Console().print(
-            f"\n[bold green]✓[/bold green]  API key saved "
-            f"([dim]{masked}[/dim])  →  [dim]{CREDENTIALS_PATH}[/dim]\n"
-        )
-    except ImportError:
-        print(f"\n✓  API key saved ({masked})  →  {CREDENTIALS_PATH}\n")
+    _print(
+        c,
+        f"\n[bold green]✓[/bold green]  Authenticated "
+        f"([dim]{masked}[/dim])  ·  credentials saved to [dim]{CREDENTIALS_PATH}[/dim]\n",
+        plain=f"\n✓  Authenticated ({masked})  ·  credentials saved to {CREDENTIALS_PATH}\n",
+    )
 
 
-def _print_skipped() -> None:
-    try:
-        from rich.console import Console
-        Console().print(
-            "\n[yellow]⚠[/yellow]  Continuing without a GraphBus API key. "
-            "Some features will be unavailable.\n"
-            f"   Get yours at [cyan]{ONBOARDING_URL}[/cyan]\n"
-        )
-    except ImportError:
-        print(f"\n⚠  Continuing without a GraphBus API key. Get yours at {ONBOARDING_URL}\n")
+# ---------------------------------------------------------------------------
+# Runtime LLM key check (called by build.py / negotiate commands)
+# ---------------------------------------------------------------------------
+
+def check_llm_key() -> tuple[bool, str, str]:
+    """
+    Check whether the env var for the user's configured LLM model is set.
+
+    Returns
+    -------
+    (found, env_var, model_string)
+        found       — True if the key is present in the environment
+        env_var     — name of the expected env var (e.g. "DEEPSEEK_API_KEY")
+        model_string — litellm model string (e.g. "deepseek/deepseek-reasoner")
+
+    LLM keys are NEVER read from credentials — only from the environment.
+    """
+    model_str, env_var = _load_stored_model()
+    found = bool(os.getenv(env_var, "").strip())
+    return found, env_var, model_str
+
+
+def get_configured_model() -> str:
+    """Return the litellm model string saved in credentials, or the default."""
+    return _load_stored_model()[0]
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def ensure_api_key(*, required: bool = True) -> str:
+def ensure_api_key() -> str:
     """
-    Return the active GraphBus API key, running interactive onboarding if needed.
+    Return a valid GRAPHBUS_API_KEY, running interactive onboarding if needed.
 
     Resolution order
     ----------------
     1. ``GRAPHBUS_API_KEY`` environment variable
     2. ``~/.graphbus/credentials.json``
-    3. Interactive first-run prompt (opens browser, validates, saves)
+    3. Interactive first-run onboarding (fully blocking — no skip option)
+       a. Prompt for API key
+       b. Prompt for preferred LLM model (model name saved; key NOT stored)
+       c. Save to credentials file; set env var for this process
 
-    Parameters
-    ----------
-    required:
-        If *True* (default) and the user skips onboarding, exit with code 1.
-        If *False*, return ``""`` instead of exiting so callers can degrade
-        gracefully.
-
-    Returns
-    -------
-    str
-        A non-empty API key string (or ``""`` when *required=False* and the
-        user skipped).
+    Always returns a non-empty key string. Exits with code 1 only if stdin
+    is not a TTY (non-interactive environment without a configured key).
     """
     # 1. Environment variable
     key = os.getenv("GRAPHBUS_API_KEY", "").strip()
@@ -226,28 +291,45 @@ def ensure_api_key(*, required: bool = True) -> str:
         os.environ["GRAPHBUS_API_KEY"] = key
         return key
 
-    # 3. Interactive onboarding
-    _print_banner()
-    key = _prompt_for_key()
+    # 3. Interactive onboarding — no TTY means we can't prompt
+    if not sys.stdin.isatty():
+        c = _con()
+        _print(
+            c,
+            "\n[red]✗[/red]  [bold]GRAPHBUS_API_KEY[/bold] is required.\n"
+            f"   Get yours at [cyan]{ONBOARDING_URL}[/cyan]\n"
+            "   Then set it:  export GRAPHBUS_API_KEY=gb_...\n",
+            plain=f"\n✗  GRAPHBUS_API_KEY is required.\n"
+                  f"   Get yours at {ONBOARDING_URL}\n"
+                  "   Then set it:  export GRAPHBUS_API_KEY=gb_...\n",
+        )
+        sys.exit(1)
 
-    if not key:
-        _print_skipped()
-        if required:
-            sys.exit(1)
-        return ""
+    c = _con()
+    _print_banner(c)
 
-    _save_key(key)
+    # a. API key — blocking, no skip
+    key = _prompt_for_graphbus_key(c)
+
+    # b. LLM model preference (key NOT stored — only model name + env var name)
+    model_str, model_env = _prompt_for_model(c)
+
+    # c. Persist
+    creds = _load_credentials()
+    creds["api_key"] = key
+    creds["model"] = model_str
+    creds["model_env_var"] = model_env
+    _save_credentials(creds)
+
     os.environ["GRAPHBUS_API_KEY"] = key
-    _print_success(key)
+    _print_success(key, c)
     return key
 
 
 def get_api_key() -> str:
     """
     Return the current API key without triggering onboarding.
-
-    Returns ``""`` if no key is configured. Useful for optional features
-    (e.g. negotiation history warehousing) that should degrade gracefully.
+    Returns ``""`` if no key is configured.
     """
     return (
         os.getenv("GRAPHBUS_API_KEY", "").strip()
