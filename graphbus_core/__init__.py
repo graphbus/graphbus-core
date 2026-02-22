@@ -8,6 +8,7 @@ Runtime Mode: Agents are dormant, code executes statically
 from graphbus_core.node_base import GraphBusNode
 from graphbus_core.decorators import schema_method, subscribe, depends_on
 from graphbus_core.config import BuildConfig, RuntimeConfig, LLMConfig, GraphBusConfig
+from graphbus_core.auth import ensure_api_key, get_api_key
 
 __version__ = "0.1.0"
 
@@ -20,4 +21,6 @@ __all__ = [
     "RuntimeConfig",
     "LLMConfig",
     "GraphBusConfig",
+    "ensure_api_key",
+    "get_api_key",
 ]
