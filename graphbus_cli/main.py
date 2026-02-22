@@ -91,6 +91,9 @@ from graphbus_cli.commands.contract import contract
 from graphbus_cli.commands.migrate import migrate
 from graphbus_cli.commands.coherence import coherence
 from graphbus_cli.commands.tui import tui
+from graphbus_cli.commands.session import session
+from graphbus_cli.commands.ns import ns
+from graphbus_cli.commands.auth import auth
 
 cli.add_command(build)
 cli.add_command(run)
@@ -111,10 +114,29 @@ cli.add_command(contract)
 cli.add_command(migrate)
 cli.add_command(coherence)
 cli.add_command(tui)
+cli.add_command(session)
+cli.add_command(ns)
+cli.add_command(auth)
 
 
 def main():
     """Main entry point with error handling"""
+    import sys as _sys
+    from graphbus_core.auth import ensure_api_key as _ensure_api_key
+
+    # Gate: require a GraphBus API key for any real command.
+    # Skip for: bare invocation, --help, --version, and `graphbus auth *`
+    # (the auth subcommand IS the key-setup flow — can't gate it behind itself).
+    _SKIP_FLAGS = {"--help", "-h", "--version"}
+    _first_cmd = _sys.argv[1] if len(_sys.argv) > 1 else ""
+    _needs_key = (
+        bool(_first_cmd)
+        and _first_cmd != "auth"
+        and not any(f in _sys.argv for f in _SKIP_FLAGS)
+    )
+    if _needs_key:
+        _ensure_api_key(required=True)
+
     try:
         # Run CLI
         cli(obj={})
