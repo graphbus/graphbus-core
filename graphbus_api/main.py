@@ -20,6 +20,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from graphbus_api.auth import init_api_key
+from graphbus_api.firebase_auth import init_firebase
+from graphbus_api.routes.auth import router as auth_router
 from graphbus_api.routes.build import router as build_router
 from graphbus_api.routes.run import router as run_router
 from graphbus_api.routes.negotiations import router as negotiations_router
@@ -46,9 +48,11 @@ app.add_middleware(
 # ── Auth init ────────────────────────────────────────────────────────────────
 
 init_api_key()
+init_firebase()
 
 # ── Routers ──────────────────────────────────────────────────────────────────
 
+app.include_router(auth_router, prefix="")
 app.include_router(build_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
 app.include_router(negotiations_router, prefix="/api")
@@ -82,6 +86,13 @@ def root():
                 "stats":   "GET    /api/run/{session_id}/stats",
                 "info":    "GET    /api/run/{session_id}",
                 "stop":    "DELETE /api/run/{session_id}",
+            },
+            "auth": {
+                "verify":      "POST   /auth/verify",
+                "me":          "GET    /auth/me",
+                "list_keys":   "GET    /auth/keys",
+                "create_key":  "POST   /auth/keys",
+                "revoke_key":  "DELETE /auth/keys/{key_id}",
             },
             "negotiations": {
                 "create":          "POST   /api/negotiations",

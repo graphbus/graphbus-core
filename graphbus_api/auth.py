@@ -4,6 +4,9 @@ API Key authentication for the GraphBus API.
 On startup:
 - Uses GRAPHBUS_API_KEY env var if set
 - Otherwise generates a secure random key and persists it to .env
+
+When Firebase is initialized, API keys are also validated against Firestore
+(multi-tenant mode). The env-var key always works as a fallback (self-hosted mode).
 """
 
 import os
@@ -11,6 +14,8 @@ import secrets
 from pathlib import Path
 
 from fastapi import Header, HTTPException
+
+from graphbus_api.firebase_auth import is_firebase_initialized, validate_api_key
 
 
 _api_key: str = ""
@@ -76,6 +81,14 @@ def get_api_key() -> str:
 
 async def require_api_key(x_api_key: str = Header(...)) -> str:
     """FastAPI dependency — validates the X-Api-Key header."""
-    if x_api_key != _api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return x_api_key
+    # Multi-tenant: check Firestore if Firebase is initialized
+    if is_firebase_initialized():
+        user = validate_api_key(x_api_key)
+        if user:
+            return x_api_key
+
+    # Self-hosted fallback: check env-var key
+    if x_api_key == _api_key:
+        return x_api_key
+
+    raise HTTPException(status_code=401, detail="Invalid API key")

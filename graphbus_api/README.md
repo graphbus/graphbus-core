@@ -56,3 +56,71 @@ Once running, visit `http://localhost:8080/docs` for the interactive Swagger UI.
 | `GET` | `/health` | Health check |
 
 All endpoints except `/health` require `X-Api-Key` header.
+
+### Auth endpoints (requires Firebase)
+
+| Method | Path | Auth Header | Description |
+|--------|------|-------------|-------------|
+| `POST` | `/auth/verify` | — (body: `id_token`) | Verify Firebase token, create user + issue API key |
+| `GET` | `/auth/me` | `X-Api-Key` | Get current user profile |
+| `GET` | `/auth/keys` | `X-Firebase-Token` | List user's API keys |
+| `POST` | `/auth/keys` | `X-Firebase-Token` | Create a new API key |
+| `DELETE` | `/auth/keys/{key_id}` | `X-Firebase-Token` | Revoke an API key |
+
+## Firebase setup (multi-tenant mode)
+
+To enable OAuth (Google/GitHub sign-in) and per-user API key management, configure Firebase:
+
+### 1. Create a Firebase project
+
+1. Go to [Firebase Console](https://console.firebase.google.com/) and create a project
+2. Enable **Authentication** → Sign-in providers: Google, GitHub
+3. Enable **Cloud Firestore** (start in production mode)
+
+### 2. Generate a service account key
+
+1. Firebase Console → Project Settings → Service Accounts
+2. Click **Generate New Private Key** → download the JSON file
+
+### 3. Configure the server
+
+Provide the service account credentials via one of:
+
+```bash
+# Option A: path to the JSON file (recommended)
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# Option B: inline JSON (useful in Docker / CI)
+export FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"...",...}'
+```
+
+Then start the server as usual:
+
+```bash
+uvicorn graphbus_api.main:app --host 0.0.0.0 --port 8080
+```
+
+If Firebase credentials are found, the server prints:
+
+```
+============================================================
+  Firebase Admin SDK initialized
+  Firestore connected — multi-tenant auth enabled
+============================================================
+```
+
+### 4. Auth flow (client-side)
+
+```
+1. User signs in via Firebase client SDK (Google / GitHub)
+2. Client gets a Firebase ID token
+3. POST /auth/verify  { "id_token": "<token>" }
+   → Returns { "uid", "email", "api_key": "gb_...", "key_id" }
+4. Use the gb_ key in X-Api-Key header for all subsequent API calls
+```
+
+### Without Firebase (self-hosted)
+
+If no Firebase credentials are set, the server falls back to env-var API key auth.
+The `/auth/*` endpoints return `503 Service Unavailable`. All other endpoints
+work as before using the `GRAPHBUS_API_KEY` from the environment.

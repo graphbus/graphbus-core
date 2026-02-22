@@ -36,16 +36,22 @@ Most LLM orchestration frameworks call LLMs at runtime — forever. Every user r
 
 ## Getting Started
 
-To use GraphBus negotiation (Build Mode), you need a GraphBus API key:
+GraphBus uses two keys for different purposes:
 
-1. Sign up at [graphbus.com](https://graphbus.com)
-2. Get your API key from the dashboard
-3. Set it in your environment:
-   ```bash
-   export GRAPHBUS_API_KEY=your_key_here
-   ```
+**Anthropic API key** — powers LLM agent negotiation. Agents run on your own Anthropic account. Required for Build Mode.
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # get yours at console.anthropic.com
+```
 
-Without an API key, you can still use GraphBus Runtime Mode and the local scanner locally. Build Mode with LLM negotiation requires an API key.
+**GraphBus API key** *(optional)* — warehouses your negotiation history, contracts, and cross-session memory at [api.graphbus.com](https://graphbus.com). Without it, negotiation works fine but history isn't persisted.
+```bash
+export GRAPHBUS_API_KEY=gb_...        # sign up at graphbus.com
+```
+
+You can also use DeepSeek R1 (the default model — cheaper, strong reasoning):
+```bash
+export DEEPSEEK_API_KEY=...           # get yours at platform.deepseek.com
+```
 
 ---
 
@@ -66,7 +72,7 @@ graphbus build agents/
 graphbus run .graphbus/
 
 # Enable LLM agents for a negotiation round
-export GRAPHBUS_API_KEY=your_key_here  # Get yours at graphbus.com
+export DEEPSEEK_API_KEY=your_key_here  # or ANTHROPIC_API_KEY=sk-ant-...
 graphbus build agents/ --enable-agents
 ```
 
@@ -109,7 +115,7 @@ graphbus run .graphbus/
 Enable agents and watch them negotiate:
 
 ```bash
-export GRAPHBUS_API_KEY=your_key_here  # Get yours at graphbus.com
+export DEEPSEEK_API_KEY=your_key_here  # or ANTHROPIC_API_KEY=sk-ant-...
 graphbus build agents/ --enable-agents
 # [AGENT] HelloService: "I propose adding input validation..."
 # [AGENT] LoggerService: "I accept — improves contract safety"
@@ -231,7 +237,7 @@ Three working examples are included in `examples/`:
 ```bash
 cd examples/hello_graphbus
 python build.py              # Build without agents
-GRAPHBUS_API_KEY=your_key_here python build.py   # Build with LLM agents
+DEEPSEEK_API_KEY=your_key python build.py   # Build with LLM agents
 python run.py                # Run the built artifacts
 ```
 

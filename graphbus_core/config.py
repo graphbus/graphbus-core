@@ -23,9 +23,17 @@ class LLMConfig:
 
 @dataclass
 class GraphBusConfig:
-    """Configuration for the hosted GraphBus API."""
-    api_key: str | None = None        # GRAPHBUS_API_KEY env var
-    api_url: str = GRAPHBUS_API_URL   # Override for self-hosted
+    """
+    Configuration for the GraphBus warehousing API (api.graphbus.com).
+
+    Stores negotiation history, contracts, proposals, and cross-session memory.
+    OPTIONAL — negotiation works without it; you just lose persistence.
+
+    Note: LLM calls use ANTHROPIC_API_KEY / DEEPSEEK_API_KEY directly.
+          GRAPHBUS_API_KEY is for data warehousing only, not LLM compute.
+    """
+    api_key: str | None = None        # GRAPHBUS_API_KEY — for warehousing (optional)
+    api_url: str = GRAPHBUS_API_URL   # Override for self-hosted deployments
 
 
 @dataclass

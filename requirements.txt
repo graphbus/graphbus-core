@@ -19,3 +19,6 @@ httpx>=0.25.0
 
 # .env file loading
 python-dotenv>=1.0.0
+
+# Firebase Admin SDK (optional — for multi-tenant OAuth + API key management)
+firebase-admin>=6.0.0
