@@ -23,7 +23,7 @@ from graphbus_cli.utils.websocket import (
 
 
 @click.command()
-@click.argument('artifacts_dir', type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument('artifacts_dir', type=click.Path(exists=False, file_okay=False, dir_okay=True))
 @click.option(
     '--rounds',
     type=int,
@@ -185,6 +185,21 @@ def negotiate(
         - .graphbus/negotiations.json with session index
     """
     try:
+        # Validate artifacts_dir exists with a helpful message
+        _artifacts_path_check = Path(artifacts_dir)
+        if not _artifacts_path_check.exists():
+            raise BuildError(
+                f"Artifacts directory '{artifacts_dir}' does not exist.\n\n"
+                "  You need to build first:\n\n"
+                "    graphbus build agents/\n"
+                "    graphbus negotiate .graphbus\n\n"
+                "  Or if you haven't created a project yet:\n\n"
+                "    graphbus init my-project\n"
+                "    cd my-project\n"
+                "    graphbus build agents/\n"
+                "    graphbus negotiate .graphbus"
+            )
+
         # Start WebSocket server for UI communication (if available)
         websocket_server = None
         use_websocket = False

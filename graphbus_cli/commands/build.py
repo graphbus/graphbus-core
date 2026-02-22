@@ -24,7 +24,7 @@ from graphbus_cli.utils.websocket import (
 
 
 @click.command()
-@click.argument('agents_dir', type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument('agents_dir', type=click.Path(exists=False, file_okay=False, dir_okay=True))
 @click.option(
     '--output-dir', '-o',
     default='.graphbus',
@@ -164,6 +164,21 @@ def build(
         - Suggests modifications for alignment
     """
     try:
+        # Validate agents_dir exists with a helpful message
+        _agents_path_check = Path(agents_dir)
+        if not _agents_path_check.exists():
+            raise BuildError(
+                f"Directory '{agents_dir}' does not exist.\n\n"
+                "  To scaffold a new project first:\n\n"
+                "    graphbus init my-project\n"
+                "    cd my-project\n"
+                "    graphbus build agents/\n\n"
+                "  Or use an existing agents directory:\n\n"
+                "    graphbus build path/to/my/agents/"
+            )
+        if not _agents_path_check.is_dir():
+            raise BuildError(f"'{agents_dir}' is not a directory.")
+
         # Start WebSocket server if agent orchestration is enabled
         websocket_server = None
         if enable_agents and is_websocket_available():
