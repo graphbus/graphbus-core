@@ -100,19 +100,16 @@ def init_firebase() -> bool:
             )
             return False
 
-        # Use spicy-chai project; Firestore on the 'analytics' database
-        project_id = os.environ.get("FIREBASE_PROJECT_ID", "spicy-chai")
+        # GraphBus Firebase project
+        project_id = os.environ.get("FIREBASE_PROJECT_ID", "graphbus-19688")
         firebase_admin.initialize_app(cred, {"projectId": project_id})
 
-        db_name = os.environ.get("FIRESTORE_DATABASE", "analytics")
-        _db = firestore.client(database_id=db_name)
+        db_name = os.environ.get("FIRESTORE_DATABASE", "(default)")
+        _db = firestore.client(database_id=db_name) if db_name != "(default)" else firestore.client()
         _firebase_initialized = True
 
-        logger.info("Firebase Admin SDK initialized (project=%s, db=%s)", project_id, db_name)
-        print("\n" + "=" * 60)
-        print(f"  Firebase Admin SDK initialized (project: {project_id})")
-        print(f"  Firestore: {db_name} — multi-tenant auth enabled")
-        print("=" * 60 + "\n")
+        logger.info("Firebase initialized (project=%s)", project_id)
+        print(f"  ✓ Firebase: project={project_id}, Firestore ready")
         return True
 
     except Exception as exc:
