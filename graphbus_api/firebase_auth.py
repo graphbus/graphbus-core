@@ -85,22 +85,33 @@ def init_firebase() -> bool:
                 service_info = json.loads(inline_json)
                 cred = credentials.Certificate(service_info)
 
+        # Option 3: default path for GraphBus deployment
+        if cred is None:
+            default_path = os.path.expanduser("~/.config/graphbus/firebase-sa.json")
+            if os.path.isfile(default_path):
+                cred = credentials.Certificate(default_path)
+
         if cred is None:
             logger.warning(
                 "No Firebase credentials found "
-                "(set GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_SERVICE_ACCOUNT_JSON). "
+                "(set GOOGLE_APPLICATION_CREDENTIALS, FIREBASE_SERVICE_ACCOUNT_JSON, "
+                "or place credentials at ~/.config/graphbus/firebase-sa.json). "
                 "Firebase features disabled — falling back to env-var API key auth."
             )
             return False
 
-        firebase_admin.initialize_app(cred)
-        _db = firestore.client()
+        # Use spicy-chai project; Firestore on the 'analytics' database
+        project_id = os.environ.get("FIREBASE_PROJECT_ID", "spicy-chai")
+        firebase_admin.initialize_app(cred, {"projectId": project_id})
+
+        db_name = os.environ.get("FIRESTORE_DATABASE", "analytics")
+        _db = firestore.client(database_id=db_name)
         _firebase_initialized = True
 
-        logger.info("Firebase Admin SDK initialized successfully")
+        logger.info("Firebase Admin SDK initialized (project=%s, db=%s)", project_id, db_name)
         print("\n" + "=" * 60)
-        print("  Firebase Admin SDK initialized")
-        print("  Firestore connected — multi-tenant auth enabled")
+        print(f"  Firebase Admin SDK initialized (project: {project_id})")
+        print(f"  Firestore: {db_name} — multi-tenant auth enabled")
         print("=" * 60 + "\n")
         return True
 
@@ -141,7 +152,7 @@ def get_or_create_user(uid: str, email: str, display_name: str = None) -> dict:
         raise ValueError("Firebase is not initialized")
 
     try:
-        user_ref = _db.collection("users").document(uid)
+        user_ref = _db.collection("graphbus_users").document(uid)
         doc = user_ref.get()
 
         if doc.exists:
@@ -187,7 +198,7 @@ def create_api_key(uid: str, label: str = "default") -> tuple[str, str]:
             "last_used": None,
             "revoked": False,
         }
-        _db.collection("api_keys").document(key_id).set(key_data)
+        _db.collection("graphbus_api_keys").document(key_id).set(key_data)
         return key_id, plaintext
 
     except Exception as exc:
@@ -210,7 +221,7 @@ def validate_api_key(api_key: str) -> dict | None:
 
         # Query api_keys where key_hash matches
         results = (
-            _db.collection("api_keys")
+            _db.collection("graphbus_api_keys")
             .where("key_hash", "==", key_hash)
             .where("revoked", "==", False)
             .limit(1)
@@ -228,7 +239,7 @@ def validate_api_key(api_key: str) -> dict | None:
 
         # Fetch associated user
         uid = key_data["uid"]
-        user_doc = _db.collection("users").document(uid).get()
+        user_doc = _db.collection("graphbus_users").document(uid).get()
         if not user_doc.exists:
             return None
 
@@ -253,7 +264,7 @@ def list_user_api_keys(uid: str) -> list[dict]:
 
     try:
         results = (
-            _db.collection("api_keys")
+            _db.collection("graphbus_api_keys")
             .where("uid", "==", uid)
             .order_by("created_at")
             .get()
@@ -288,7 +299,7 @@ def revoke_api_key(uid: str, key_id: str) -> bool:
         raise ValueError("Firebase is not initialized")
 
     try:
-        key_ref = _db.collection("api_keys").document(key_id)
+        key_ref = _db.collection("graphbus_api_keys").document(key_id)
         doc = key_ref.get()
 
         if not doc.exists:
@@ -318,7 +329,7 @@ def get_active_key_for_user(uid: str) -> dict | None:
 
     try:
         results = (
-            _db.collection("api_keys")
+            _db.collection("graphbus_api_keys")
             .where("uid", "==", uid)
             .where("revoked", "==", False)
             .limit(1)

@@ -34,7 +34,7 @@ from graphbus_cli.utils.websocket import (
     '--llm-model',
     type=str,
     default=DEFAULT_LLM_MODEL,
-    help=f'LLM model for agent orchestration (default: {DEFAULT_LLM_MODEL})'
+    help=f'LiteLLM model string for agent orchestration, e.g. deepseek/deepseek-reasoner, claude-3-5-sonnet-20241022, gpt-4o (default: {DEFAULT_LLM_MODEL})'
 )
 @click.option(
     '--api-key',

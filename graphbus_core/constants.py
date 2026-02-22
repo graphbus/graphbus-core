@@ -2,10 +2,10 @@
 Centralized constants and defaults for GraphBus
 """
 
-# Default LLM model for agent orchestration
-# DeepSeek R1 via DeepSeek API (OpenAI-compatible)
-# Set DEEPSEEK_API_KEY env var, or ANTHROPIC_API_KEY for Claude models.
-DEFAULT_LLM_MODEL = "deepseek-reasoner"
+# Default LLM model for agent orchestration (LiteLLM model string format)
+# DeepSeek R1 via LiteLLM — set DEEPSEEK_API_KEY env var.
+# See https://docs.litellm.ai/docs/providers for all supported providers.
+DEFAULT_LLM_MODEL = "deepseek/deepseek-reasoner"
 
 # Other LLM defaults
 DEFAULT_TEMPERATURE = 0.7

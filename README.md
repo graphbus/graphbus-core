@@ -38,19 +38,17 @@ Most LLM orchestration frameworks call LLMs at runtime — forever. Every user r
 
 GraphBus uses two keys for different purposes:
 
-**Anthropic API key** — powers LLM agent negotiation. Agents run on your own Anthropic account. Required for Build Mode.
+**LLM provider key** — powers LLM agent negotiation via [LiteLLM](https://docs.litellm.ai/docs/providers). Set the key for your chosen provider:
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...   # get yours at console.anthropic.com
+export DEEPSEEK_API_KEY=...           # default model: deepseek/deepseek-reasoner
+export ANTHROPIC_API_KEY=sk-ant-...   # for claude-* models
+export OPENAI_API_KEY=sk-...          # for gpt-* models
+export OPENROUTER_API_KEY=...         # access all models with one key
 ```
 
 **GraphBus API key** *(optional)* — warehouses your negotiation history, contracts, and cross-session memory at [api.graphbus.com](https://graphbus.com). Without it, negotiation works fine but history isn't persisted.
 ```bash
 export GRAPHBUS_API_KEY=gb_...        # sign up at graphbus.com
-```
-
-You can also use DeepSeek R1 (the default model — cheaper, strong reasoning):
-```bash
-export DEEPSEEK_API_KEY=...           # get yours at platform.deepseek.com
 ```
 
 ---
@@ -362,8 +360,7 @@ pip install graphbus
 - rich >= 13.0.0
 
 Optional (for LLM agents):
-- `anthropic` — Claude models
-- `openai` — GPT models
+- `litellm` — all LLM providers (Anthropic, OpenAI, DeepSeek, OpenRouter, etc.)
 
 Optional (for TUI):
 - `textual >= 0.47.0`
@@ -406,7 +403,7 @@ pytest                    # Make sure everything passes
 ```
 
 Areas where we especially want help:
-- **More LLM backends** — currently Claude-native, OpenAI adapter needed
+- **More LLM backends** — LiteLLM integration supports many providers; help us test them
 - **More examples** — real-world pipelines showing agent negotiation
 - **Documentation** — architecture docs, tutorials, protocol spec
 - **Benchmarks** — latency/cost comparisons vs. runtime LLM frameworks
@@ -433,7 +430,8 @@ See **[ROADMAP.md](ROADMAP.md)** for the full roadmap with targets and status.
 
 **Later:**
 - [ ] PyPI release (`pip install graphbus`)
-- [ ] OpenAI / Ollama LLM backends
+- [x] Multi-provider LLM support (via LiteLLM)
+- [ ] Ollama local LLM backend
 - [ ] Multi-process distributed runtime
 - [ ] TypeScript SDK
 - [ ] Protocol specification (for non-Python implementations)
