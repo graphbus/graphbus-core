@@ -18,5 +18,9 @@ class PrinterService(GraphBusNode):
     )
     def print_message(self, message: str):
         """Print a message to the console."""
-        print(message)
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("message must be a non-empty string")
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] {message}")
         return {}

@@ -76,8 +76,9 @@ class AgentOrchestrator:
         self.refactoring_validator = RefactoringValidator()
         self.contract_validator = ContractValidator()
 
-        # Git workflow integration
-        self.session_manager = NegotiationSessionManager(project_root=project_root)
+        # Git workflow integration — use from_env() so GRAPHBUS_NEGOTIATIONS_URL
+        # and GRAPHBUS_API_KEY are picked up automatically for remote dual-write
+        self.session_manager = NegotiationSessionManager.from_env(project_root=project_root)
         self.git_workflow = GitWorkflowManager(project_root=project_root)
         self.session = session
         self.pr_feedback_context = None  # Will be populated if previous PR found

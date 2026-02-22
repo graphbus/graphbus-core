@@ -15,6 +15,10 @@ class LoggerService(GraphBusNode):
     @subscribe("/Hello/MessageGenerated")
     def on_message_generated(self, event):
         """Handle message generated events."""
+        name = event.get('name', 'unknown')
+        if not isinstance(name, str):
+            name = str(name) if name is not None else 'unknown'
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[LOG] [{timestamp}] Greeting generated: {event.get('message', 'unknown')}")
+        message = event.get('message', event.get('text', 'unknown'))
+        print(f"[LOG] [{timestamp}] Greeting generated for '{name}': {message}")

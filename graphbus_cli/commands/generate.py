@@ -118,10 +118,9 @@ def agent(agent_name: str, subscribes: tuple, publishes: tuple, methods: tuple,
     # Check if file exists
     if file_path.exists():
         if not force:
-            print_info(f"Agent file already exists at {file_path}")
-            print_info(f"Use --force/-f to overwrite, or choose a different agent name")
-            console.print()
-            return
+            click.echo(f"Error: Agent file already exists at {file_path}", err=False)
+            click.echo("Use --force/-f to overwrite, or choose a different agent name")
+            raise SystemExit(1)
         else:
             print_info(f"Overwriting existing agent file: {file_path}")
 

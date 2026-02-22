@@ -31,6 +31,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!graphbus.spec
 
 # Installer logs
 pip-log.txt
@@ -205,3 +206,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# GraphBus runtime artifacts
+.graphbus/
+*.pyc
+__pycache__/
+.env
+.env.*
+htmlcov/
+.coverage
+.DS_Store
+!graphbus_api/.env.example

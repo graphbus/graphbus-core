@@ -4,7 +4,7 @@ Configuration objects for Build and Runtime modes
 
 from dataclasses import dataclass, field
 from typing import Any
-from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT
+from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT, GRAPHBUS_API_URL
 
 
 @dataclass
@@ -19,6 +19,21 @@ class LLMConfig:
     timeout: int = DEFAULT_TIMEOUT  # seconds
     base_url: str | None = None  # Optional custom API endpoint
     extra_params: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class GraphBusConfig:
+    """
+    Configuration for the GraphBus warehousing API (api.graphbus.com).
+
+    Stores negotiation history, contracts, proposals, and cross-session memory.
+    OPTIONAL — negotiation works without it; you just lose persistence.
+
+    Note: LLM calls use ANTHROPIC_API_KEY / DEEPSEEK_API_KEY directly.
+          GRAPHBUS_API_KEY is for data warehousing only, not LLM compute.
+    """
+    api_key: str | None = None        # GRAPHBUS_API_KEY — for warehousing (optional)
+    api_url: str = GRAPHBUS_API_URL   # Override for self-hosted deployments
 
 
 @dataclass
