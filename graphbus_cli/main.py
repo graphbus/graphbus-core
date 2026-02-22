@@ -133,7 +133,7 @@ def main():
     _first_cmd = _sys.argv[1] if len(_sys.argv) > 1 else ""
     _needs_key = (
         bool(_first_cmd)
-        and _first_cmd not in ("auth", "ui")
+        and _first_cmd != "auth"
         and not any(f in _sys.argv for f in _SKIP_FLAGS)
     )
     if _needs_key:
