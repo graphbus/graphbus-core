@@ -133,3 +133,102 @@ class NegotiationClient:
                 headers=self._headers,
             )
         self._raise_on_error(resp)
+
+    # -- parties --
+
+    def register_party(
+        self,
+        session_id: str,
+        party_id: str,
+        name: str,
+        kind: str = "agent",
+        webhook_url: Optional[str] = None,
+        meta: Optional[dict] = None,
+    ) -> dict:
+        """Register a party on a negotiation session."""
+        with httpx.Client() as client:
+            resp = client.post(
+                self._url(f"/{session_id}/parties"),
+                json={
+                    "party_id": party_id,
+                    "name": name,
+                    "kind": kind,
+                    "webhook_url": webhook_url,
+                    "meta": meta or {},
+                },
+                headers=self._headers,
+            )
+        self._raise_on_error(resp)
+        return resp.json()
+
+    def list_parties(self, session_id: str) -> list[dict]:
+        with httpx.Client() as client:
+            resp = client.get(
+                self._url(f"/{session_id}/parties"),
+                headers=self._headers,
+            )
+        self._raise_on_error(resp)
+        return resp.json()
+
+    def remove_party(self, session_id: str, party_id: str) -> None:
+        with httpx.Client() as client:
+            resp = client.delete(
+                self._url(f"/{session_id}/parties/{party_id}"),
+                headers=self._headers,
+            )
+        self._raise_on_error(resp)
+
+    # -- messages --
+
+    def post_message(
+        self,
+        session_id: str,
+        from_party: str,
+        body: str,
+        kind: str = "offer",
+        to_party: Optional[str] = None,
+        meta: Optional[dict] = None,
+    ) -> dict:
+        """Post a negotiation message from a party."""
+        with httpx.Client() as client:
+            resp = client.post(
+                self._url(f"/{session_id}/messages"),
+                json={
+                    "from_party": from_party,
+                    "body": body,
+                    "kind": kind,
+                    "to_party": to_party,
+                    "meta": meta or {},
+                },
+                headers=self._headers,
+            )
+        self._raise_on_error(resp)
+        return resp.json()
+
+    def list_messages(self, session_id: str, since: int = 0) -> list[dict]:
+        with httpx.Client() as client:
+            resp = client.get(
+                self._url(f"/{session_id}/messages"),
+                params={"since": since} if since else {},
+                headers=self._headers,
+            )
+        self._raise_on_error(resp)
+        return resp.json()
+
+    # -- slack binding --
+
+    def bind_slack(
+        self,
+        session_id: str,
+        channel: str,
+        thread_ts: Optional[str] = None,
+    ) -> dict:
+        """Bind a negotiation session to a Slack channel/thread."""
+        with httpx.Client() as client:
+            resp = client.post(
+                self._url(f"/{session_id}/slack"),
+                json={"channel": channel, "thread_ts": thread_ts},
+                headers=self._headers,
+            )
+        self._raise_on_error(resp)
+        return resp.json()

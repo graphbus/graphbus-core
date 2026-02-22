@@ -8,7 +8,7 @@ config = BuildConfig(
     root_package="examples.news_summarizer.agents",
     output_dir="examples/news_summarizer/.graphbus"
 )
-config.llm_config = {'model': 'claude-sonnet-4-20250514', 'api_key': os.environ.get('ANTHROPIC_API_KEY')}
+config.llm_config = {'api_key': os.environ.get('GRAPHBUS_API_KEY')}
 
-artifacts = build_project(config, enable_agents=os.environ.get('ANTHROPIC_API_KEY') is not None)
+artifacts = build_project(config, enable_agents=os.environ.get('GRAPHBUS_API_KEY') is not None)
 print(f"\n✅ Build complete: {artifacts.agents_count} agents, {artifacts.topics_count} topics")

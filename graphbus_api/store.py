@@ -82,12 +82,14 @@ def remove_session(session_id: str) -> bool:
 # ── Negotiation store ────────────────────────────────────────────────────────
 
 class NegotiationStore:
-    """In-memory store for negotiation sessions, proposals, commits, and feedback."""
+    """In-memory store for negotiation sessions, proposals, commits, feedback, parties, and messages."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, dict] = {}
         self._proposals: dict[str, list[dict]] = {}   # session_id -> list
         self._commits: dict[str, list[dict]] = {}      # session_id -> list
+        self._parties: dict[str, list[dict]] = {}      # session_id -> list of party dicts
+        self._messages: dict[str, list[dict]] = {}     # session_id -> list of message dicts
 
     # -- sessions --
 
@@ -104,11 +106,18 @@ class NegotiationStore:
             "commit_count": 0,
             "developer_feedback": [],
             "created_at": time.time(),
+            # Multi-party negotiation fields
+            "slack_channel": None,       # Slack channel ID (e.g. "C0ABCDEF")
+            "slack_thread_ts": None,     # Slack thread timestamp (binds to a specific thread)
+            "party_count": 0,
+            "message_count": 0,
         }
         session.update(extra)
         self._sessions[session_id] = session
         self._proposals[session_id] = []
         self._commits[session_id] = []
+        self._parties[session_id] = []
+        self._messages[session_id] = []
         return session
 
     def get_negotiation_session(self, session_id: str) -> Optional[dict]:
@@ -162,6 +171,61 @@ class NegotiationStore:
             "body": body,
             "timestamp": time.time(),
         })
+
+    # -- parties --
+
+    def add_party(self, session_id: str, party: dict) -> Optional[dict]:
+        """Register a party on a session. Returns None if session not found."""
+        if session_id not in self._sessions:
+            return None
+        # Prevent duplicate party_id
+        existing_ids = {p["party_id"] for p in self._parties.get(session_id, [])}
+        if party["party_id"] in existing_ids:
+            return None  # already registered
+        self._parties.setdefault(session_id, []).append(party)
+        self._sessions[session_id]["party_count"] = len(self._parties[session_id])
+        return party
+
+    def get_parties(self, session_id: str) -> list[dict]:
+        return list(self._parties.get(session_id, []))
+
+    def get_party(self, session_id: str, party_id: str) -> Optional[dict]:
+        for p in self._parties.get(session_id, []):
+            if p["party_id"] == party_id:
+                return p
+        return None
+
+    def remove_party(self, session_id: str, party_id: str) -> bool:
+        parties = self._parties.get(session_id, [])
+        before = len(parties)
+        self._parties[session_id] = [p for p in parties if p["party_id"] != party_id]
+        changed = len(self._parties[session_id]) != before
+        if changed:
+            self._sessions[session_id]["party_count"] = len(self._parties[session_id])
+        return changed
+
+    # -- messages --
+
+    def add_message(self, session_id: str, message: dict) -> Optional[dict]:
+        """Post a message to the session. Returns None if session not found."""
+        if session_id not in self._sessions:
+            return None
+        self._messages.setdefault(session_id, []).append(message)
+        self._sessions[session_id]["message_count"] = len(self._messages[session_id])
+        return message
+
+    def get_messages(self, session_id: str, since_seq: int = 0) -> list[dict]:
+        """Return messages with seq >= since_seq (0 = all)."""
+        return [m for m in self._messages.get(session_id, []) if m.get("seq", 0) >= since_seq]
+
+    def bind_slack(self, session_id: str, channel: str, thread_ts: Optional[str]) -> Optional[dict]:
+        """Bind a negotiation session to a Slack channel/thread."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        session["slack_channel"] = channel
+        session["slack_thread_ts"] = thread_ts
+        return session
 
 
 # Singleton

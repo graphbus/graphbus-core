@@ -34,6 +34,21 @@ Most LLM orchestration frameworks call LLMs at runtime — forever. Every user r
 
 ---
 
+## Getting Started
+
+To use GraphBus negotiation (Build Mode), you need a GraphBus API key:
+
+1. Sign up at [graphbus.com](https://graphbus.com)
+2. Get your API key from the dashboard
+3. Set it in your environment:
+   ```bash
+   export GRAPHBUS_API_KEY=your_key_here
+   ```
+
+Without an API key, you can still use GraphBus Runtime Mode and the local scanner locally. Build Mode with LLM negotiation requires an API key.
+
+---
+
 ## Quickstart
 
 ```bash
@@ -51,7 +66,7 @@ graphbus build agents/
 graphbus run .graphbus/
 
 # Enable LLM agents for a negotiation round
-export ANTHROPIC_API_KEY=sk-ant-...
+export GRAPHBUS_API_KEY=your_key_here  # Get yours at graphbus.com
 graphbus build agents/ --enable-agents
 ```
 
@@ -94,7 +109,7 @@ graphbus run .graphbus/
 Enable agents and watch them negotiate:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+export GRAPHBUS_API_KEY=your_key_here  # Get yours at graphbus.com
 graphbus build agents/ --enable-agents
 # [AGENT] HelloService: "I propose adding input validation..."
 # [AGENT] LoggerService: "I accept — improves contract safety"
@@ -216,7 +231,7 @@ Three working examples are included in `examples/`:
 ```bash
 cd examples/hello_graphbus
 python build.py              # Build without agents
-ANTHROPIC_API_KEY=sk-... python build.py   # Build with LLM agents
+GRAPHBUS_API_KEY=your_key_here python build.py   # Build with LLM agents
 python run.py                # Run the built artifacts
 ```
 

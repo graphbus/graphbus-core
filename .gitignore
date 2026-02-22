@@ -211,5 +211,7 @@ __marimo__/
 *.pyc
 __pycache__/
 .env
+.env.*
 htmlcov/
 .coverage
+.DS_Store

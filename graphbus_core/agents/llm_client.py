@@ -1,22 +1,29 @@
 """
-LLM client abstraction — supports DeepSeek (default) and Anthropic.
+LLM client abstraction — supports the hosted GraphBus API, DeepSeek, and Anthropic.
 
-Provider is inferred from the model name:
+When GRAPHBUS_API_KEY is set (or passed explicitly), all LLM calls are routed
+through the hosted GraphBus API at api.graphbus.com. No provider API keys needed.
+
+Fallback (self-hosted / dev): provider is inferred from the model name:
   - "deepseek-*"           → DeepSeek API  (OpenAI-compatible, needs DEEPSEEK_API_KEY)
   - "claude-*"             → Anthropic API (needs ANTHROPIC_API_KEY)
   - anything else          → treated as OpenAI-compatible (needs OPENAI_API_KEY or
                              set base_url + api_key explicitly)
 
 Environment variables:
-  DEEPSEEK_API_KEY    — for deepseek-* models
-  ANTHROPIC_API_KEY   — for claude-* models
+  GRAPHBUS_API_KEY    — hosted GraphBus API (preferred)
+  DEEPSEEK_API_KEY    — for deepseek-* models (fallback)
+  ANTHROPIC_API_KEY   — for claude-* models (fallback)
   OPENAI_API_KEY      — fallback for other models
 """
 
+import json
 import os
 from typing import Optional
 
-from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
+import httpx
+
+from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, GRAPHBUS_API_URL
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 
@@ -27,6 +34,109 @@ def _infer_provider(model: str) -> str:
     if model.startswith("claude"):
         return "anthropic"
     return "openai"
+
+
+class GraphBusAPIClient:
+    """
+    Client for the hosted GraphBus API.
+
+    Routes LLM calls through api.graphbus.com so users don't need
+    their own provider API keys. Uses the OpenAI-compatible
+    POST /v1/chat/completions endpoint.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        api_url: str = GRAPHBUS_API_URL,
+        model: str = DEFAULT_LLM_MODEL,
+        temperature: float = DEFAULT_TEMPERATURE,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ):
+        self.api_key = api_key
+        self.api_url = api_url.rstrip("/")
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self._http = httpx.Client(
+            base_url=self.api_url,
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=60,
+        )
+
+    # ── Public API ──────────────────────────────────────────────────────────
+
+    def generate(self, prompt: str, system: Optional[str] = None) -> str:
+        """Generate a response via the hosted GraphBus API."""
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+        }
+
+        try:
+            resp = self._http.post("/v1/chat/completions", json=body)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"] or ""
+        except httpx.HTTPStatusError as e:
+            print(f"GraphBus API error (HTTP {e.response.status_code}): {e.response.text}")
+            raise
+        except Exception as e:
+            print(f"GraphBus API error: {e}")
+            raise
+
+    def generate_with_tool(
+        self,
+        prompt: str,
+        tool_name: str,
+        tool_schema: dict,
+        system: Optional[str] = None,
+    ) -> dict:
+        """Generate a structured response using tool/function calling via the hosted API."""
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        tool_def = {
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "description": f"Structured output for {tool_name}",
+                "parameters": tool_schema,
+            },
+        }
+
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "tools": [tool_def],
+            "tool_choice": {"type": "function", "function": {"name": tool_name}},
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+        }
+
+        try:
+            resp = self._http.post("/v1/chat/completions", json=body)
+            resp.raise_for_status()
+            data = resp.json()
+            tool_calls = data["choices"][0]["message"].get("tool_calls")
+            if tool_calls:
+                return json.loads(tool_calls[0]["function"]["arguments"])
+            raise ValueError(f"No tool call in GraphBus API response: {data}")
+        except httpx.HTTPStatusError as e:
+            print(f"GraphBus API tool error (HTTP {e.response.status_code}): {e.response.text}")
+            raise
+        except Exception as e:
+            print(f"GraphBus API tool error: {e}")
+            raise
 
 
 class LLMClient:
@@ -44,10 +154,28 @@ class LLMClient:
         base_url: Optional[str] = None,
         temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        graphbus_api_key: Optional[str] = None,
+        graphbus_api_url: Optional[str] = None,
     ):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+
+        # Check for hosted GraphBus API key (explicit param → env var)
+        gb_key = graphbus_api_key or os.environ.get("GRAPHBUS_API_KEY")
+        if gb_key:
+            gb_url = graphbus_api_url or os.environ.get("GRAPHBUS_API_URL", GRAPHBUS_API_URL)
+            self._graphbus_client = GraphBusAPIClient(
+                api_key=gb_key,
+                api_url=gb_url,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            self._provider = "graphbus"
+            return
+
+        self._graphbus_client = None
         self._provider = _infer_provider(model)
 
         if self._provider == "anthropic":
@@ -91,6 +219,8 @@ class LLMClient:
 
     def generate(self, prompt: str, system: Optional[str] = None) -> str:
         """Generate a response. Returns the text content."""
+        if self._graphbus_client:
+            return self._graphbus_client.generate(prompt, system)
         if self._provider == "anthropic":
             return self._generate_anthropic(prompt, system)
         return self._generate_openai(prompt, system)
@@ -103,6 +233,8 @@ class LLMClient:
         system: Optional[str] = None,
     ) -> dict:
         """Generate a structured response using tool/function calling."""
+        if self._graphbus_client:
+            return self._graphbus_client.generate_with_tool(prompt, tool_name, tool_schema, system)
         if self._provider == "anthropic":
             return self._generate_tool_anthropic(prompt, tool_name, tool_schema, system)
         return self._generate_tool_openai(prompt, tool_name, tool_schema, system)

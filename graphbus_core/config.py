@@ -4,7 +4,7 @@ Configuration objects for Build and Runtime modes
 
 from dataclasses import dataclass, field
 from typing import Any
-from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT
+from graphbus_core.constants import DEFAULT_LLM_MODEL, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT, GRAPHBUS_API_URL
 
 
 @dataclass
@@ -19,6 +19,13 @@ class LLMConfig:
     timeout: int = DEFAULT_TIMEOUT  # seconds
     base_url: str | None = None  # Optional custom API endpoint
     extra_params: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class GraphBusConfig:
+    """Configuration for the hosted GraphBus API."""
+    api_key: str | None = None        # GRAPHBUS_API_KEY env var
+    api_url: str = GRAPHBUS_API_URL   # Override for self-hosted
 
 
 @dataclass

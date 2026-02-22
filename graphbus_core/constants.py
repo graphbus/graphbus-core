@@ -7,6 +7,9 @@ Centralized constants and defaults for GraphBus
 # Set DEEPSEEK_API_KEY env var, or ANTHROPIC_API_KEY for Claude models.
 DEFAULT_LLM_MODEL = "deepseek-reasoner"
 
+# Hosted GraphBus API
+GRAPHBUS_API_URL = "https://api.graphbus.com"
+
 # Other LLM defaults
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 4096

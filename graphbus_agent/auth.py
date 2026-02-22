@@ -3,10 +3,11 @@ Token resolution for GraphBus Agent SDK.
 
 Resolution order:
   1. Explicit token passed as argument
-  2. GRAPHBUS_TOKEN env var
-  3. ANTHROPIC_API_KEY env var
-  4. OpenClaw auth-profiles  (~/.openclaw/agents/main/agent/auth-profiles.json)
-  5. Claude CLI config       (~/.claude.json)
+  2. GRAPHBUS_API_KEY env var  (hosted GraphBus API — recommended)
+  3. GRAPHBUS_TOKEN env var
+  4. ANTHROPIC_API_KEY env var (self-hosted / dev only)
+  5. OpenClaw auth-profiles  (~/.openclaw/agents/main/agent/auth-profiles.json)
+  6. Claude CLI config       (~/.claude.json)
 """
 
 import json
@@ -71,7 +72,8 @@ def resolve_token(token: Optional[str] = None) -> str:
         RuntimeError: If no token can be found.
     """
     sources = [
-        ("explicit argument", lambda: token),
+        ("explicit argument",    lambda: token),
+        ("GRAPHBUS_API_KEY env", lambda: os.environ.get("GRAPHBUS_API_KEY")),
         ("GRAPHBUS_TOKEN env",   lambda: os.environ.get("GRAPHBUS_TOKEN")),
         ("ANTHROPIC_API_KEY env", lambda: os.environ.get("ANTHROPIC_API_KEY")),
         ("OpenClaw auth store",  _read_openclaw_token),
@@ -89,8 +91,9 @@ def resolve_token(token: Optional[str] = None) -> str:
             return value
 
     raise RuntimeError(
-        "No Anthropic token found. Provide one of:\n"
-        "  • GRAPHBUS_TOKEN or ANTHROPIC_API_KEY environment variable\n"
+        "No API key found. Provide one of:\n"
+        "  • GRAPHBUS_API_KEY environment variable (get yours at https://graphbus.com)\n"
+        "  • ANTHROPIC_API_KEY environment variable (for self-hosted / dev use)\n"
         "  • OpenClaw configured with a Claude setup-token\n"
         "  • Run: claude setup-token  (then openclaw models auth setup-token --provider anthropic)"
     )

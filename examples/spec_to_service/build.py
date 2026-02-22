@@ -1,7 +1,7 @@
 """
 Build script for the spec_to_service GraphBus example.
 
-Scans agents, runs negotiation if ANTHROPIC_API_KEY is set,
+Scans agents, runs negotiation if GRAPHBUS_API_KEY is set,
 and saves build artifacts to .graphbus/.
 """
 
@@ -16,7 +16,7 @@ from graphbus_core.build.builder import build_project
 
 
 def main():
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    api_key = os.environ.get('GRAPHBUS_API_KEY')
 
     config = BuildConfig(
         root_package="examples.spec_to_service.agents",
@@ -33,7 +33,7 @@ def main():
         if enable_agents:
             print("Agent mode enabled - agents will propose code improvements")
         else:
-            print("Agent mode disabled - set ANTHROPIC_API_KEY to enable")
+            print("Agent mode disabled - set GRAPHBUS_API_KEY to enable (get yours at graphbus.com)")
 
         artifacts = build_project(config, enable_agents=enable_agents)
         print("\nBuild successful!")
