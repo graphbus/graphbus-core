@@ -49,15 +49,21 @@ class TestAuth:
     def test_all_endpoints_require_auth(self, client, bad_headers):
         """Every negotiations endpoint rejects a bad key."""
         endpoints = [
-            ("GET",   "/api/negotiations"),
-            ("POST",  "/api/negotiations"),
-            ("GET",   "/api/negotiations/fake-id"),
-            ("PATCH", "/api/negotiations/fake-id"),
-            ("POST",  "/api/negotiations/fake-id/proposals"),
-            ("GET",   "/api/negotiations/fake-id/proposals"),
-            ("POST",  "/api/negotiations/fake-id/commits"),
-            ("GET",   "/api/negotiations/fake-id/commits"),
-            ("POST",  "/api/negotiations/fake-id/feedback"),
+            ("GET",    "/api/negotiations"),
+            ("POST",   "/api/negotiations"),
+            ("GET",    "/api/negotiations/fake-id"),
+            ("PATCH",  "/api/negotiations/fake-id"),
+            ("POST",   "/api/negotiations/fake-id/proposals"),
+            ("GET",    "/api/negotiations/fake-id/proposals"),
+            ("POST",   "/api/negotiations/fake-id/commits"),
+            ("GET",    "/api/negotiations/fake-id/commits"),
+            ("POST",   "/api/negotiations/fake-id/feedback"),
+            ("POST",   "/api/negotiations/fake-id/parties"),
+            ("GET",    "/api/negotiations/fake-id/parties"),
+            ("DELETE", "/api/negotiations/fake-id/parties/some-party"),
+            ("POST",   "/api/negotiations/fake-id/messages"),
+            ("GET",    "/api/negotiations/fake-id/messages"),
+            ("POST",   "/api/negotiations/fake-id/slack"),
         ]
         for method, url in endpoints:
             resp = client.request(method, url, headers=bad_headers, json={})
@@ -347,3 +353,298 @@ class TestIsolation:
 
         assert client.get(f"/api/negotiations/{s1['session_id']}", headers=auth_headers).json()["commit_count"] == 1
         assert client.get(f"/api/negotiations/{s2['session_id']}", headers=auth_headers).json()["commit_count"] == 0
+
+
+# ── Parties ───────────────────────────────────────────────────────────────────
+
+def register_party(client, auth_headers, sid, party_id="graphbus", name="GraphBus Agent", kind="agent"):
+    return client.post(
+        f"/api/negotiations/{sid}/parties",
+        json={"party_id": party_id, "name": name, "kind": kind},
+        headers=auth_headers,
+    )
+
+
+class TestParties:
+    def test_register_party_returns_party(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        resp = register_party(client, auth_headers, sid)
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["party_id"] == "graphbus"
+        assert body["name"] == "GraphBus Agent"
+        assert body["kind"] == "agent"
+        assert "joined_at" in body
+
+    def test_register_party_increments_party_count(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        register_party(client, auth_headers, sid, party_id="agent-a")
+        register_party(client, auth_headers, sid, party_id="agent-b", name="Agent B")
+        register_party(client, auth_headers, sid, party_id="human-c", name="Human C", kind="human")
+
+        session_data = client.get(f"/api/negotiations/{sid}", headers=auth_headers).json()
+        assert session_data["party_count"] == 3
+
+    def test_register_duplicate_party_409(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        register_party(client, auth_headers, sid, party_id="dup")
+        resp = register_party(client, auth_headers, sid, party_id="dup")
+        assert resp.status_code == 409
+
+    def test_register_party_unknown_session_404(self, client, auth_headers):
+        resp = register_party(client, auth_headers, "no-such-session")
+        assert resp.status_code == 404
+
+    def test_list_parties(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        register_party(client, auth_headers, sid, party_id="a", name="A")
+        register_party(client, auth_headers, sid, party_id="b", name="B", kind="human")
+
+        resp = client.get(f"/api/negotiations/{sid}/parties", headers=auth_headers)
+        assert resp.status_code == 200
+        parties = resp.json()
+        assert len(parties) == 2
+        ids = {p["party_id"] for p in parties}
+        assert ids == {"a", "b"}
+
+    def test_list_parties_unknown_session_404(self, client, auth_headers):
+        resp = client.get("/api/negotiations/ghost/parties", headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_remove_party(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        register_party(client, auth_headers, sid, party_id="to-remove")
+        register_party(client, auth_headers, sid, party_id="stays")
+
+        resp = client.delete(f"/api/negotiations/{sid}/parties/to-remove", headers=auth_headers)
+        assert resp.status_code == 204
+
+        parties = client.get(f"/api/negotiations/{sid}/parties", headers=auth_headers).json()
+        assert len(parties) == 1
+        assert parties[0]["party_id"] == "stays"
+
+    def test_remove_party_updates_count(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        register_party(client, auth_headers, sid, party_id="p1")
+        register_party(client, auth_headers, sid, party_id="p2")
+
+        assert client.get(f"/api/negotiations/{sid}", headers=auth_headers).json()["party_count"] == 2
+
+        client.delete(f"/api/negotiations/{sid}/parties/p1", headers=auth_headers)
+        assert client.get(f"/api/negotiations/{sid}", headers=auth_headers).json()["party_count"] == 1
+
+    def test_remove_unknown_party_404(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        resp = client.delete(f"/api/negotiations/{sid}/parties/ghost", headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_remove_party_unknown_session_404(self, client, auth_headers):
+        resp = client.delete("/api/negotiations/ghost/parties/any", headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_register_party_with_webhook_and_meta(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        resp = client.post(
+            f"/api/negotiations/{sid}/parties",
+            json={
+                "party_id": "spicychai",
+                "name": "SpicyChai Agent",
+                "kind": "agent",
+                "webhook_url": "https://spicychai.ai/webhook",
+                "meta": {"model": "deepseek-r1", "host": "spicychai-node"},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["webhook_url"] == "https://spicychai.ai/webhook"
+        assert body["meta"]["model"] == "deepseek-r1"
+
+
+# ── Messages ──────────────────────────────────────────────────────────────────
+
+def post_message(client, auth_headers, sid, from_party, body, kind="offer", to_party=None):
+    payload = {"from_party": from_party, "body": body, "kind": kind}
+    if to_party:
+        payload["to_party"] = to_party
+    return client.post(f"/api/negotiations/{sid}/messages", json=payload, headers=auth_headers)
+
+
+class TestMessages:
+    def test_post_message_returns_message(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+        register_party(client, auth_headers, sid, party_id="agent-x", name="Agent X")
+
+        resp = post_message(client, auth_headers, sid, "agent-x", "I propose we refactor auth.")
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["seq"] == 1
+        assert body["session_id"] == sid
+        assert body["from_party"] == "agent-x"
+        assert body["body"] == "I propose we refactor auth."
+        assert body["kind"] == "offer"
+        assert "timestamp" in body
+
+    def test_messages_get_sequential_seq(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+        register_party(client, auth_headers, sid, party_id="p1", name="P1")
+
+        for i in range(3):
+            post_message(client, auth_headers, sid, "p1", f"msg {i}")
+
+        messages = client.get(f"/api/negotiations/{sid}/messages", headers=auth_headers).json()
+        assert [m["seq"] for m in messages] == [1, 2, 3]
+
+    def test_post_message_increments_message_count(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+        register_party(client, auth_headers, sid, party_id="pa", name="PA")
+
+        assert client.get(f"/api/negotiations/{sid}", headers=auth_headers).json()["message_count"] == 0
+        post_message(client, auth_headers, sid, "pa", "hello")
+        assert client.get(f"/api/negotiations/{sid}", headers=auth_headers).json()["message_count"] == 1
+
+    def test_list_messages_since(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+        register_party(client, auth_headers, sid, party_id="sender", name="Sender")
+
+        for i in range(5):
+            post_message(client, auth_headers, sid, "sender", f"msg {i}")
+
+        # since=3 → should return seq 3, 4, 5
+        resp = client.get(f"/api/negotiations/{sid}/messages?since=3", headers=auth_headers)
+        messages = resp.json()
+        assert len(messages) == 3
+        assert messages[0]["seq"] == 3
+
+    def test_post_message_unregistered_sender_422(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        resp = post_message(client, auth_headers, sid, "not-registered", "hi")
+        assert resp.status_code == 422
+
+    def test_post_message_unknown_session_404(self, client, auth_headers):
+        resp = post_message(client, auth_headers, "ghost-session", "p1", "hi")
+        assert resp.status_code == 404
+
+    def test_list_messages_unknown_session_404(self, client, auth_headers):
+        resp = client.get("/api/negotiations/ghost/messages", headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_message_targeted_to_party(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+        register_party(client, auth_headers, sid, party_id="from-p", name="From P")
+        register_party(client, auth_headers, sid, party_id="to-p", name="To P")
+
+        resp = post_message(client, auth_headers, sid, "from-p", "direct message", to_party="to-p")
+        assert resp.status_code == 201
+        assert resp.json()["to_party"] == "to-p"
+
+    def test_message_kinds(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+        register_party(client, auth_headers, sid, party_id="party", name="Party")
+
+        for kind in ("offer", "counter", "accept", "reject", "signal", "info"):
+            resp = post_message(client, auth_headers, sid, "party", f"msg of kind {kind}", kind=kind)
+            assert resp.status_code == 201
+            assert resp.json()["kind"] == kind
+
+    def test_messages_isolated_between_sessions(self, client, auth_headers):
+        s1 = create_session(client, auth_headers, "Session A")
+        s2 = create_session(client, auth_headers, "Session B")
+        register_party(client, auth_headers, s1["session_id"], party_id="p")
+        register_party(client, auth_headers, s2["session_id"], party_id="p")
+
+        post_message(client, auth_headers, s1["session_id"], "p", "only in s1")
+
+        s1_msgs = client.get(f"/api/negotiations/{s1['session_id']}/messages", headers=auth_headers).json()
+        s2_msgs = client.get(f"/api/negotiations/{s2['session_id']}/messages", headers=auth_headers).json()
+        assert len(s1_msgs) == 1
+        assert len(s2_msgs) == 0
+
+
+# ── Slack binding ─────────────────────────────────────────────────────────────
+
+class TestSlackBinding:
+    def test_bind_slack_channel(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        resp = client.post(
+            f"/api/negotiations/{sid}/slack",
+            json={"channel": "C0ABCDEF"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["slack_channel"] == "C0ABCDEF"
+        assert body["slack_thread_ts"] is None
+
+    def test_bind_slack_channel_with_thread(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        resp = client.post(
+            f"/api/negotiations/{sid}/slack",
+            json={"channel": "C0ABCDEF", "thread_ts": "1234567890.000100"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["slack_channel"] == "C0ABCDEF"
+        assert body["slack_thread_ts"] == "1234567890.000100"
+
+    def test_bind_slack_persists_on_session(self, client, auth_headers):
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        client.post(
+            f"/api/negotiations/{sid}/slack",
+            json={"channel": "C0ABCDEF", "thread_ts": "ts.001"},
+            headers=auth_headers,
+        )
+
+        session_data = client.get(f"/api/negotiations/{sid}", headers=auth_headers).json()
+        assert session_data["slack_channel"] == "C0ABCDEF"
+        assert session_data["slack_thread_ts"] == "ts.001"
+
+    def test_bind_slack_can_rebind(self, client, auth_headers):
+        """Binding a second time overwrites the first."""
+        session = create_session(client, auth_headers)
+        sid = session["session_id"]
+
+        client.post(f"/api/negotiations/{sid}/slack", json={"channel": "C0OLD"}, headers=auth_headers)
+        client.post(f"/api/negotiations/{sid}/slack", json={"channel": "C0NEW"}, headers=auth_headers)
+
+        session_data = client.get(f"/api/negotiations/{sid}", headers=auth_headers).json()
+        assert session_data["slack_channel"] == "C0NEW"
+
+    def test_bind_slack_unknown_session_404(self, client, auth_headers):
+        resp = client.post(
+            "/api/negotiations/ghost/slack",
+            json={"channel": "C0ABCDEF"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404

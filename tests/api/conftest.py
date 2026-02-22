@@ -28,6 +28,8 @@ def client(set_api_key):
     negotiation_store._sessions.clear()
     negotiation_store._proposals.clear()
     negotiation_store._commits.clear()
+    negotiation_store._parties.clear()
+    negotiation_store._messages.clear()
 
     with TestClient(app) as c:
         yield c
