@@ -26,6 +26,24 @@ class TUIState:
         """Select an agent."""
         self.selected_agent = agent_name
     
+
+    def get_graph(self):
+        return self.graph_data
+    
+    def get_all_agents(self):
+        if not self.graph_data:
+            return []
+        return self.graph_data.get(agents, [])
+    
+    def get_dependencies(self, agent_name):
+        if not self.graph_data:
+            return []
+        deps = []
+        for edge in self.graph_data.get(edges, []):
+            if edge.get(from) == agent_name:
+                deps.append(edge.get(to))
+        return deps
+
     def get_agent_details(self, agent_name: str) -> Dict[str, Any]:
         """Get details about an agent."""
         if not self.graph_data:
