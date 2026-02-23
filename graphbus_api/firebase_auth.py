@@ -117,6 +117,11 @@ def init_firebase() -> bool:
         return False
 
 
+def get_db():
+    """Return the Firestore client, or None if not initialized."""
+    return _db
+
+
 def is_firebase_initialized() -> bool:
     """Return whether Firebase was successfully initialized."""
     return _firebase_initialized
