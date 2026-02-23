@@ -56,9 +56,11 @@ class HotReloadManager:
         if preserve_state and hasattr(old_node, 'get_state'):
             try:
                 saved_state = old_node.get_state()
-            except Exception:
-                # If get_state fails, continue without state preservation
-                pass
+            except Exception as e:
+                # State capture failed — hot reload will continue but state will
+                # not be restored. Log so the caller knows data may be lost.
+                print(f"[HotReload] Warning: Failed to capture state for '{node_name}' "
+                      f"before reload — state will not be restored: {e}")
 
         # Get agent definition
         agent_def = None
@@ -104,8 +106,10 @@ class HotReloadManager:
                 try:
                     new_node.set_state(saved_state)
                 except Exception as e:
-                    # Log warning but continue
-                    pass
+                    # Log so the caller knows state was not carried over; the new
+                    # instance starts fresh rather than failing the whole reload.
+                    print(f"[HotReload] Warning: Failed to restore state for '{node_name}' "
+                          f"after reload — node will start with default state: {e}")
 
             # Replace node in executor
             self.executor.nodes[node_name] = new_node
