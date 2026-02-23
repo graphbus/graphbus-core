@@ -13,6 +13,16 @@ MODELS_BY_TIER = {
 }
 
 
+def get_available_models(tier):
+    """Get available models for a tier."""
+    return MODELS_BY_TIER.get(tier, [])
+
+
+def validate_model(model, tier):
+    """Validate model is valid for tier."""
+    return model in MODELS_BY_TIER.get(tier, []) or model in [m for models in MODELS_BY_TIER.values() for m in models]
+
+
 class ModelEditor:
     """Edit and manage model assignments for agents."""
     
