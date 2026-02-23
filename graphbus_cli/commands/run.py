@@ -196,7 +196,11 @@ def run(artifacts_dir: str, no_message_bus: bool, interactive: bool, verbose: bo
         else:
             # Standard mode - wait for Ctrl+C
             console.print()
-            print_info("Runtime is running. Press Ctrl+C to stop...")
+            print_info("Runtime is running.")
+            console.print()
+            console.print("  [dim]→ Run[/dim] [cyan]graphbus run .graphbus --interactive[/cyan] [dim]to call agent methods interactively[/dim]")
+            console.print("  [dim]→ Or run[/dim] [cyan]python run.py[/cyan] [dim]to execute the demo pipeline[/dim]")
+            console.print("  [dim]→ Press Ctrl+C to stop[/dim]")
             console.print()
 
             # Set up signal handler for graceful shutdown

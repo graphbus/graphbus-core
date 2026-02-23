@@ -34,6 +34,7 @@ def cli(ctx):
     \b
     Development Tools:
       init      - Initialize new project from template
+      ingest    - Convert any existing codebase into GraphBus agents
       generate  - Generate agent boilerplate code
       profile   - Profile runtime performance
       dashboard - Launch web-based visualization dashboard
@@ -107,6 +108,7 @@ from graphbus_cli.commands.session import session
 from graphbus_cli.commands.ns import ns
 from graphbus_cli.commands.auth import auth
 from graphbus_cli.commands.ui import ui
+from graphbus_cli.commands.ingest import ingest
 
 cli.add_command(build)
 cli.add_command(run)
@@ -131,6 +133,7 @@ cli.add_command(session)
 cli.add_command(ns)
 cli.add_command(auth)
 cli.add_command(ui)
+cli.add_command(ingest)
 
 
 def main():

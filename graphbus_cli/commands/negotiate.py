@@ -215,7 +215,7 @@ def negotiate(
         # negotiate is the only command that requires a GraphBus API key.
         # init, build, and run work without any signup.
         from graphbus_core.auth import ensure_api_key as _ensure_api_key
-        _ensure_api_key(required=True)
+        _ensure_api_key()
 
         # ── Namespace resolution ──────────────────────────────────────────────
         # If --namespace not provided, read the active context set by `graphbus ns use`.

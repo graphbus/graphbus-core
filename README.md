@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A multi-agent orchestration protocol where LLM-powered agents negotiate, refactor, and evolve your codebase — then run it statically at zero AI cost.**
+**Distribute your AI reasoning. Multiple specialized agents negotiate, refactor, and evolve your codebase — separation of concerns at the reasoning level.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
@@ -22,15 +22,15 @@ GraphBus is a Python framework with a radical idea: **let your agents improve th
 
 Every class in a GraphBus project is a potential LLM agent. During a **build cycle**, agents wake up, read their own source, propose improvements, and negotiate consensus with other agents via a typed message bus. An arbiter resolves conflicts. The result is committed back to source.
 
-At **runtime**, none of that happens. The built artifacts execute as plain, deterministic Python — no LLM calls, no network latency, zero AI cost.
+At **runtime**, agents execute their negotiated logic. Each agent owns a focused slice of responsibility — no single context window trying to reason about everything at once.
 
 ```
-Build once (agents active) → Deploy forever (agents dormant, code immutable)
+Negotiate (agents improve the codebase) → Deploy (agents run their domain logic)
 ```
 
 ### Why this matters
 
-Most LLM orchestration frameworks call LLMs at runtime — forever. Every user request burns tokens. GraphBus inverts this: the intelligence is spent once at build time to improve the code, and the improved code runs cheaply at scale.
+Most LLM frameworks use a single context window that grows unbounded — Claude Code, Cursor, Copilot. GraphBus inverts this: specialized agents each reason about their own domain, negotiate at boundaries, and commit improved code. The cognitive load is distributed, not bottlenecked.
 
 ---
 
@@ -251,7 +251,7 @@ graphbus run .graphbus/ --mcp   # Exposes MCP endpoint
 
 ### 3. `news_summarizer` — Real-world pipeline
 
-A multi-agent news summarization pipeline. One agent fetches, one summarizes, one formats. Agents negotiate a shared schema for the summary output during build; runtime executes deterministically.
+A multi-agent news summarization pipeline. One agent fetches, one summarizes, one formats. Each agent owns its domain. Agents negotiate a shared schema for the summary output and run their specialized logic at runtime.
 
 ```bash
 cd examples/news_summarizer
