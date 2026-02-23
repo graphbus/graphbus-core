@@ -81,6 +81,12 @@ from graphbus_cli.utils.websocket import (
     help='Disable git workflow (branch creation, PR)'
 )
 @click.option(
+    '--namespace', '-n',
+    type=str,
+    default=None,
+    help='Namespace to run negotiation in (default: active namespace from `graphbus ns current`)'
+)
+@click.option(
     '--project-root',
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     default='.',
@@ -98,6 +104,7 @@ def negotiate(
     verbose: bool,
     intent: str,
     no_git: bool,
+    namespace: str,
     project_root: str
 ):
     """
@@ -124,6 +131,17 @@ def negotiate(
       graphbus negotiate .graphbus --llm-model gpt-4-turbo
       graphbus negotiate .graphbus --rounds 3 --max-proposals-per-agent 3
       graphbus negotiate .graphbus --protected-files agents/core.py
+      graphbus negotiate .graphbus --namespace backend-api --intent "reduce latency"
+      graphbus negotiate .graphbus -n production --intent "harden error handling"
+
+    \b
+    Namespace:
+      By default the active namespace (set via `graphbus ns use`) is used.
+      Override per-run with --namespace / -n.
+
+      graphbus ns create backend-api
+      graphbus ns use backend-api
+      graphbus negotiate .graphbus --intent "add retry logic"   # runs in backend-api
 
     \b
     How It Works:
@@ -185,6 +203,20 @@ def negotiate(
         - .graphbus/negotiations.json with session index
     """
     try:
+        # ── Namespace resolution ──────────────────────────────────────────────
+        # If --namespace not provided, read the active context set by `graphbus ns use`.
+        if namespace is None:
+            try:
+                from graphbus_core.namespace import NamespaceRegistry
+                _reg = NamespaceRegistry(storage_dir=str(Path(project_root) / ".graphbus"))
+                namespace = _reg.get_current()
+            except Exception:
+                namespace = "default"
+
+        if verbose or intent:
+            from graphbus_cli.utils.output import print_info as _pi
+            _pi(f"Namespace: {namespace}")
+
         # Validate artifacts_dir exists with a helpful message
         _artifacts_path_check = Path(artifacts_dir)
         if not _artifacts_path_check.exists():
@@ -234,12 +266,13 @@ def negotiate(
 
         # Display negotiation info
         print_header("GraphBus Agent Negotiation")
-        print_info(f"Artifacts directory: {graphbus_dir}")
-        print_info(f"LLM model: {llm_model}")
-        print_info(f"Max rounds: {rounds}")
-        print_info(f"Max proposals per agent: {max_proposals_per_agent}")
+        print_info(f"Namespace:             {namespace}")
+        print_info(f"Artifacts directory:   {graphbus_dir}")
+        print_info(f"LLM model:             {llm_model}")
+        print_info(f"Max rounds:            {rounds}")
+        print_info(f"Max proposals/agent:   {max_proposals_per_agent}")
         if intent:
-            print_info(f"User intent: {intent}")
+            print_info(f"Intent:                {intent}")
         console.print()
 
         # Validate API key
@@ -363,7 +396,8 @@ def negotiate(
             user_intent=enhanced_intent,  # Use enhanced intent with answers
             verbose=verbose,
             project_root=project_root,
-            enable_git_workflow=not no_git
+            enable_git_workflow=not no_git,
+            namespace=namespace,
         )
 
         _display_negotiation_summary(results)
