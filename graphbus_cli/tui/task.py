@@ -48,6 +48,8 @@ class Task:
     data: dict = field(default_factory=dict)
     error: Optional[str] = None
     timeout_seconds: Optional[float] = None
+    agent: Optional[str] = None
+    proposal_id: Optional[str] = None
     
     def __lt__(self, other: "Task") -> bool:
         """Compare tasks by priority (higher priority comes first in queue)."""
