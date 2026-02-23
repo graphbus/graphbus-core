@@ -25,6 +25,7 @@ from graphbus_api.routes.auth import router as auth_router
 from graphbus_api.routes.build import router as build_router
 from graphbus_api.routes.run import router as run_router
 from graphbus_api.routes.negotiations import router as negotiations_router
+from graphbus_api.routes.namespaces import router as namespaces_router
 
 app = FastAPI(
     title="GraphBus API",
@@ -56,6 +57,7 @@ app.include_router(auth_router, prefix="")
 app.include_router(build_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
 app.include_router(negotiations_router, prefix="/api")
+app.include_router(namespaces_router, prefix="/api")
 
 
 # ── Health ───────────────────────────────────────────────────────────────────

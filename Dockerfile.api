@@ -19,7 +19,7 @@ COPY graphbus_cli/ ./graphbus_cli/
 COPY setup.py README.md ./
 
 # Install as package so graphbus_core imports resolve
-RUN pip install --no-cache-dir -e .
+ENV PYTHONPATH=/app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
