@@ -109,6 +109,7 @@ from graphbus_cli.commands.ns import ns
 from graphbus_cli.commands.auth import auth
 from graphbus_cli.commands.ui import ui
 from graphbus_cli.commands.ingest import ingest
+from graphbus_cli.commands.model import model
 
 cli.add_command(build)
 cli.add_command(run)
@@ -134,6 +135,7 @@ cli.add_command(ns)
 cli.add_command(auth)
 cli.add_command(ui)
 cli.add_command(ingest)
+cli.add_command(model)
 
 
 def main():

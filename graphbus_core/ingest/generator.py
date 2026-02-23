@@ -8,6 +8,27 @@ from typing import List, Dict, Any
 import yaml
 
 
+def _calculate_model_tier(boundary: Dict[str, Any]) -> tuple[str, str]:
+    """
+    Calculate model tier based on agent complexity.
+    
+    Returns: (model_tier, model_provider)
+    - light (≤5 files) → gemma-3-4b
+    - medium (6-20 files) → claude-haiku-4-5
+    - heavy (>20 files) → claude-sonnet-4-6
+    """
+    file_count = len(boundary.get("files", []))
+    symbol_count = len(boundary.get("symbols", []))
+    
+    # Primary metric: file count
+    if file_count <= 5:
+        return "light", "ollama"  # gemma-3-4b on Blaze
+    elif file_count <= 20:
+        return "medium", "anthropic"  # claude-haiku-4-5
+    else:
+        return "heavy", "anthropic"  # claude-sonnet-4-6
+
+
 def generate_agent_yaml(
     boundary: Dict[str, Any],
     output_dir: Path,
@@ -49,6 +70,9 @@ def generate_agent_yaml(
     # Generate system prompt
     system_prompt = _generate_system_prompt(boundary)
 
+    # Calculate model tier
+    model_tier, model_provider = _calculate_model_tier(boundary)
+
     agent_def = {
         "name": boundary["name"],
         "description": boundary["description"],
@@ -57,6 +81,8 @@ def generate_agent_yaml(
         "methods": methods,
         "subscribes": [],
         "publishes": [],
+        "model_tier": model_tier,
+        "model_provider": model_provider,
     }
 
     yaml_path = agents_dir / f"{boundary['name']}.yaml"
@@ -106,9 +132,12 @@ def generate_graph_yaml(
     # Build agent list
     agents = []
     for b in boundaries:
+        model_tier, model_provider = _calculate_model_tier(b)
         agents.append({
             "name": b["name"],
             "description": b.get("description", ""),
+            "model_tier": model_tier,
+            "model_provider": model_provider,
         })
 
     # Build edges from imports_from
