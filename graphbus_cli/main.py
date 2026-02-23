@@ -55,8 +55,8 @@ def cli(ctx):
     \b
     Advanced Features:
       state                - Manage agent state persistence
-      negotiate            - Run LLM agent negotiation (EXPERIMENTAL)
-      inspect-negotiation  - View negotiation history (EXPERIMENTAL)
+      negotiate            - Improve your codebase through agent negotiation
+      inspect-negotiation  - View negotiation history
       --debug              - Enable interactive debugger (use with run)
       --watch              - Enable hot reload (use with run)
 
@@ -135,22 +135,6 @@ cli.add_command(ui)
 
 def main():
     """Main entry point with error handling"""
-    import sys as _sys
-    from graphbus_core.auth import ensure_api_key as _ensure_api_key
-
-    # Gate: require a GraphBus API key for any real command.
-    # Skip for: bare invocation, --help, --version, and `graphbus auth *`
-    # (the auth subcommand IS the key-setup flow — can't gate it behind itself).
-    _SKIP_FLAGS = {"--help", "-h", "--version"}
-    _first_cmd = _sys.argv[1] if len(_sys.argv) > 1 else ""
-    _needs_key = (
-        bool(_first_cmd)
-        and _first_cmd != "auth"
-        and not any(f in _sys.argv for f in _SKIP_FLAGS)
-    )
-    if _needs_key:
-        _ensure_api_key(required=True)
-
     try:
         # Run CLI
         cli(obj={})
