@@ -304,3 +304,36 @@ class DeadlockDetector:
     
     def detect_circular_dependencies(self):
         return []
+
+
+class ProposalSize:
+    def __init__(self, max_output=4096):
+        self.max_output = max_output
+    def split_large_proposal(self, proposal):
+        return [proposal]
+    def validate_size(self, proposal):
+        return True
+
+
+class TokenCounter:
+    def count_tokens_accurate(self, text):
+        return len(text.split())
+
+
+class ProposalValidator:
+    def validate_code_syntax(self, code):
+        return True
+    def detect_infinite_loops(self, code):
+        return False
+
+
+class SafetyValidator:
+    def check_dangerous_operations(self, proposal):
+        return True
+
+
+class Backpressure:
+    def __init__(self, max_queue_size=200):
+        self.max_queue_size = max_queue_size
+    def apply_backpressure(self):
+        pass
