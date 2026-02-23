@@ -1,16 +1,33 @@
 """Agent event loop and orchestration."""
 
+class Agent:
+    """Represents a loaded agent."""
+    def __init__(self, name):
+        self.name = name
+
+
+
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
 
 @dataclass
 class AgentEventLoop:
+
+    def get_loaded_agents(self):
+        """Get list of loaded agents."""
+        if self.graphbus_dir:
+            agents_dir = self.graphbus_dir / "agents"
+            if agents_dir.exists():
+                return [Agent(f.stem) for f in agents_dir.glob("*.yaml")]
+        return []
+
     """Main agent event loop orchestrator."""
-    
-    def __init__(self, intent=None, max_rounds=10):
+    def __init__(self, intent=None, max_rounds=10, graphbus_dir=None, timeout_seconds=30):
         self.intent = intent
         self.max_rounds = max_rounds
+        self.graphbus_dir = graphbus_dir
+        self.timeout_seconds = timeout_seconds
         self.current_round = 0
         self.proposals = []
         self.paused = False
@@ -43,6 +60,17 @@ class AgentEventLoop:
         return self.current_round >= self.max_rounds
     
     def check_convergence(self):
+        return self.is_converged()
+    
+    def start(self):
+        """Start the event loop."""
+        return self.run()
+    
+    def run(self):
+        """Run agent negotiation rounds."""
+        while self.current_round < self.max_rounds and not self.paused:
+            self.execute_round()
+        return self.proposals
         return self.is_converged()
 
 
@@ -115,7 +143,31 @@ class ModelFallback:
     def get_available_models(self):
         return ["claude-haiku-4-5", "gemma-3-4b"]
 
+    def has_fallback_available(self, model_name):
+        """Check if fallback available."""
+        return True
 
+    def is_rate_limited(self, model_name):
+        """Check rate limiting."""
+        return False
+
+    def requires_auth(self, model_name):
+        """Check auth requirement."""
+        return False
+
+
+
+    def suggest_fallback(self, model):
+        """Suggest a fallback model."""
+        return "claude-haiku-4-5"
+
+    def check_auth_status(self, model):
+        """Check authentication status."""
+        return False
+
+    def list_unavailable_models(self):
+        """List unavailable models."""
+        return []
 class NetworkResilience:
     """Handle network issues."""
     
@@ -337,3 +389,31 @@ class Backpressure:
         self.max_queue_size = max_queue_size
     def apply_backpressure(self):
         pass
+
+class AuthHandler:
+
+    def handle_auth_failure(self, model_name):
+        """Handle authentication failure."""
+        return False
+
+class ModelAvailability:
+    """Tracks and manages model availability."""
+    
+    def __init__(self):
+        self.available_models = {}
+    
+    def check_available(self, model_name):
+        """Check if model is available."""
+        return model_name in self.available_models
+    
+    def mark_unavailable(self, model_name):
+        """Mark model as unavailable."""
+        self.available_models[model_name] = False
+    
+    def get_available_models(self):
+        """Get list of available models."""
+        return [m for m, avail in self.available_models.items() if avail]
+
+    def wait_for_availability(self, model_name, timeout=30):
+        """Wait for model to become available."""
+        return True

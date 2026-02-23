@@ -316,26 +316,16 @@ class HealthMonitor:
         self.recovery_callbacks.append(callback)
 
     def _update_status(self, node_name: str) -> None:
-        """Update health status based on metrics.
-
-        Four-level escalation path:
-          HEALTHY   – no issues
-          DEGRADED  – elevated error rate but no run of consecutive failures
-          UNHEALTHY – one or more consecutive failures (can't service all requests)
-          FAILED    – consecutive failures ≥ failure_threshold (auto-restart eligible)
-        """
+        """Update health status based on metrics."""
         metrics = self.metrics[node_name]
         old_status = metrics.status
 
         # Determine new status
         if metrics.consecutive_failures >= self.failure_threshold:
             new_status = HealthStatus.FAILED
-        elif metrics.consecutive_failures > 0:
-            # A run of back-to-back failures is worse than a high error rate
-            # spread over many calls — use UNHEALTHY (not DEGRADED) so that
-            # get_unhealthy_agents() correctly surfaces these nodes.
-            new_status = HealthStatus.UNHEALTHY
         elif metrics.error_rate > self.error_rate_threshold:
+            new_status = HealthStatus.DEGRADED
+        elif metrics.consecutive_failures > 0:
             new_status = HealthStatus.DEGRADED
         else:
             new_status = HealthStatus.HEALTHY

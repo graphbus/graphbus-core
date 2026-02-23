@@ -23,7 +23,8 @@ def list_projects(home_dir: Path) -> List[Dict[str, Any]]:
                         context = json.load(f)
                         projects.append({
                             "id": context.get("project_id"),
-                            "path": context.get("project_path"),
+                            "project_id": context.get("project_id"),
+                            "project_path": context.get("project_path"),
                             "created_at": context.get("created_at"),
                         })
                 except (json.JSONDecodeError, IOError):
@@ -36,7 +37,7 @@ def get_project_info(home_dir: Path, project_id: str) -> Dict[str, Any]:
     """Get information about a specific project."""
     projects = list_projects(home_dir)
     for project in projects:
-        if project.get("id") == project_id:
+        if project.get("project_id") == project_id or project.get("id") == project_id:
             return project
     
     raise ValueError(f"Project not found: {project_id}")

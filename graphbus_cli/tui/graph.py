@@ -62,9 +62,20 @@ class GraphViewer:
         
         for agent in self.list_agents():
             if agent.get("name") == agent_name:
-                return agent
+                # Enhance with files from agent YAML if available
+                details = dict(agent)
+                agent_yaml_path = self.graphbus_dir / "agents" / f"{agent_name}.yaml"
+                if agent_yaml_path.exists():
+                    import yaml
+                    with open(agent_yaml_path) as f:
+                        agent_config = yaml.safe_load(f) or {}
+                    details["files"] = agent_config.get("files") or agent_config.get("source_files", [])
+                else:
+                    # Default empty files list if no agent YAML
+                    details["files"] = details.get("files", [])
+                return details
         
-        return {"name": agent_name}
+        return {"name": agent_name, "files": []}
     
     def get_dependencies(self, agent_name: str) -> List[str]:
         """Get agents that depend on this agent."""

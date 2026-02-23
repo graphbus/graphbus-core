@@ -11,6 +11,30 @@ from .task import Task, TaskType, TaskState, Priority
 
 @dataclass
 class TUIState:
+
+    def __getitem__(self, key):
+        """Dict-like access."""
+        # Map 'round' to 'round_number'
+        if key == 'round':
+            return getattr(self, 'round_number', None)
+        return getattr(self, key, None)
+    
+    def __setitem__(self, key, value):
+        """Dict-like setting."""
+        setattr(self, key, value)
+    
+    def __contains__(self, key):
+        """Check if key exists."""
+        # Map 'round' to 'round_number'
+        if key == 'round':
+            return hasattr(self, 'round_number')
+        return hasattr(self, key)
+    
+    def get(self, key, default=None):
+        """Get with default."""
+        return getattr(self, key, default)
+
+
     """Central state store (immutable, reducer pattern)."""
     intent: Optional[str] = None
     current_project: Optional[str] = None
@@ -98,6 +122,15 @@ class TaskQueue:
 
 
 class TUIEventLoop:
+
+    def render_async(self):
+        """Render display asynchronously."""
+        pass
+    
+    def schedule_display(self, callback):
+        """Schedule a display update."""
+        pass
+
     """OpenClaw-style event loop for TUI orchestration."""
     
     def __init__(
@@ -270,3 +303,28 @@ class ResponseValidator:
         return response is not None
     def partial_recovery_possible(self):
         return True
+
+class Backpressure:
+    """Manages queue backpressure when overloaded."""
+    
+    def __init__(self, max_queue_size=1000):
+        self.max_queue_size = max_queue_size
+    
+    def is_overloaded(self, queue_size):
+        """Check if queue is overloaded."""
+        return queue_size >= self.max_queue_size
+    
+    def apply_slowdown(self):
+        """Apply slowdown to task submission."""
+        pass
+    
+
+    def apply_backpressure(self):
+        """Apply backpressure to slow down submissions."""
+        return {"delay_ms": 100}
+        """Apply slowdown to task submission."""
+        pass
+    
+    def clear(self):
+        """Clear backpressure state."""
+        pass

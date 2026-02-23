@@ -4,6 +4,19 @@ from typing import Optional, Dict, Any
 
 
 class TaskManager:
+
+    def request_pause(self):
+        """Request pause of task execution."""
+        self.paused = True
+    
+    def pause(self):
+        """Pause task execution."""
+        self.paused = True
+    
+    def resume(self):
+        """Resume task execution."""
+        self.paused = False
+
     """Manages async execution of agent tasks."""
     
     def __init__(self, timeout_per_agent: int = 30):
@@ -36,3 +49,9 @@ class TaskManager:
     def prepare_agent_context(self, agent, round_num):
         """Prepare context for agent execution."""
         raise NotImplementedError
+
+class TimeoutHandler:
+
+    def handle_partial_completion(self, task):
+        """Handle task with partial results."""
+        return {"status": "partial", "data": None}

@@ -32,6 +32,26 @@ class Priority(Enum):
     NORMAL = 2
     HIGH = 3
     CRITICAL = 4
+    
+    def __lt__(self, other):
+        if not isinstance(other, Priority):
+            return NotImplemented
+        return self.value < other.value
+    
+    def __le__(self, other):
+        if not isinstance(other, Priority):
+            return NotImplemented
+        return self.value <= other.value
+    
+    def __gt__(self, other):
+        if not isinstance(other, Priority):
+            return NotImplemented
+        return self.value > other.value
+    
+    def __ge__(self, other):
+        if not isinstance(other, Priority):
+            return NotImplemented
+        return self.value >= other.value
 
 
 @dataclass

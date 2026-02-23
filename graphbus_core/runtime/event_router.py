@@ -33,10 +33,6 @@ class EventRouter:
         self.bus = bus
         self.nodes = nodes
         self._handlers: Dict[str, List[tuple[GraphBusNode, str]]] = {}  # topic -> [(node, method_name)]
-        # Cache the calling convention for each (node_name, handler_name) pair so
-        # route_event_to_node() doesn't re-run inspect.signature() on every event.
-        # Values: 0 = no params, 1 = pass payload dict, 2+ = pass full Event.
-        self._handler_param_counts: Dict[tuple[str, str], int] = {}
 
     def register_subscriptions(self, subscriptions: List[Subscription]) -> None:
         """
@@ -76,12 +72,6 @@ class EventRouter:
             print(f"[EventRouter] Warning: Handler '{handler_name}' on {node_name} is not callable")
             return
 
-        # Cache the calling convention once — inspect.signature() is not free
-        # and calling it on every event delivery in route_event_to_node() would
-        # add unnecessary overhead in high-frequency topics.
-        sig = inspect.signature(handler_method)
-        self._handler_param_counts[(node_name, handler_name)] = len(sig.parameters)
-
         # Track handler
         if topic not in self._handlers:
             self._handlers[topic] = []
@@ -108,19 +98,16 @@ class EventRouter:
         try:
             handler = getattr(node, handler_name)
 
-            # Use the param count cached at subscription time — avoids calling
-            # inspect.signature() on the hot path for every event delivered.
-            param_count = self._handler_param_counts.get(
-                (node.name, handler_name),
-                1,  # safe default: pass payload
-            )
+            # Inspect handler signature to determine how to call it
+            sig = inspect.signature(handler)
+            params = list(sig.parameters.keys())
 
             # Remove 'self' parameter (it's a bound method)
             # The handler is already bound to the node instance
-            if param_count == 0:
+            if len(params) == 0:
                 # No parameters (just self, already bound)
                 handler()
-            elif param_count == 1:
+            elif len(params) == 1:
                 # One parameter: pass payload dict by default
                 # (Most handlers expect the payload, not the Event object)
                 handler(event.payload)

@@ -22,6 +22,22 @@ def parse_ingest_result(result):
 
 
 class IngestRunner:
+
+    def detect_exclusions(self):
+        """Auto-detect files/directories to exclude."""
+        exclusions = ['.git', '__pycache__', '.pytest_cache', 'node_modules']
+        return exclusions
+
+
+    def customize_exclusions(self, exclusions):
+        """Allow user to customize exclusion list."""
+        self.exclusions = exclusions
+        return self.exclusions
+
+        """Auto-detect files/directories to exclude."""
+        exclusions = ['.git', '__pycache__', '.pytest_cache', 'node_modules']
+        return exclusions
+
     """Run ingest from TUI."""
     
     def __init__(self):

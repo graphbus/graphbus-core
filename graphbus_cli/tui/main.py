@@ -4,6 +4,17 @@ from typing import Optional
 
 
 class TUIApp:
+
+    @classmethod
+    def get_min_width(cls):
+        """Get minimum terminal width."""
+        return 80
+    
+    @classmethod
+    def responsive_layout(cls, width, height):
+        """Calculate responsive layout based on terminal size."""
+        return {'width': width, 'height': height}
+
     """Main TUI application."""
     
     SCREENS = ["projects", "graph", "models", "execution", "settings"]
