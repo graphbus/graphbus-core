@@ -2,10 +2,16 @@
 Centralized constants and defaults for GraphBus
 """
 
-# Default LLM model for agent orchestration (LiteLLM model string format)
-# DeepSeek R1 via LiteLLM — set DEEPSEEK_API_KEY env var.
-# See https://docs.litellm.ai/docs/providers for all supported providers.
-DEFAULT_LLM_MODEL = "deepseek/deepseek-reasoner"
+# Default LLM model for agent orchestration (LiteLLM model string format).
+# Using spicychai cluster — OpenAI-compatible HAProxy pool with local LM Studio nodes.
+# Set SPICYCHAI_BASE_URL and SPICYCHAI_API_KEY, or OPENAI_API_BASE + OPENAI_API_KEY.
+# See https://docs.litellm.ai/docs/providers/openai_compatible for custom endpoints.
+DEFAULT_LLM_MODEL = "openai/mistralai/ministral-3-14b-reasoning"
+
+# spicychai cluster (Sravan's private LLM pool — HAProxy over LM Studio nodes)
+SPICYCHAI_BASE_URL = "http://spicychai.com:3443/light/v1"
+SPICYCHAI_API_KEY = "a762a564d533cc28abb325a404e34005cd7b51e698d9dc1e"
+SPICYCHAI_MEDIUM_URL = "http://spicychai.com:3443/medium/v1"
 
 # Other LLM defaults
 DEFAULT_TEMPERATURE = 0.7

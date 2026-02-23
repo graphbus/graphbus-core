@@ -37,6 +37,13 @@ from graphbus_cli.utils.websocket import (
     help=f'LiteLLM model string for agent orchestration, e.g. deepseek/deepseek-reasoner, claude-3-5-sonnet-20241022, gpt-4o (default: {DEFAULT_LLM_MODEL})'
 )
 @click.option(
+    '--llm-base-url',
+    type=str,
+    envvar='GRAPHBUS_LLM_BASE_URL',
+    default=None,
+    help='Custom OpenAI-compatible API base URL (or set GRAPHBUS_LLM_BASE_URL)'
+)
+@click.option(
     '--api-key',
     type=str,
     envvar='GRAPHBUS_API_KEY',
@@ -96,6 +103,7 @@ def negotiate(
     artifacts_dir: str,
     rounds: int,
     llm_model: str,
+    llm_base_url: str,
     api_key: str,
     max_proposals_per_agent: int,
     convergence_threshold: int,
@@ -288,8 +296,14 @@ def negotiate(
         os.environ.setdefault("GRAPHBUS_API_KEY", api_key)
 
         # Create LLM config
+        # LLM API key: use env var or fall back to OPENAI_API_KEY
+        import os
+        llm_api_key = os.environ.get('GRAPHBUS_LLM_API_KEY') or os.environ.get('OPENAI_API_KEY')
+
         llm_config = LLMConfig(
             model=llm_model,
+            base_url=llm_base_url,
+            api_key=llm_api_key,
         )
 
         # Create safety config

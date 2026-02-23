@@ -766,7 +766,8 @@ def run_negotiation(
     # Create LLM client
     llm_client = LLMClient(
         model=llm_config.model,
-        api_key=llm_config.api_key
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url
     )
 
     # Create orchestrator (fresh instance with counters at 0)
@@ -850,7 +851,8 @@ def collect_agent_questions(
     # Create LLM client
     llm_client = LLMClient(
         model=llm_config.model,
-        api_key=llm_config.api_key
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url
     )
 
     # Create lightweight orchestrator just for analysis

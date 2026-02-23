@@ -162,7 +162,8 @@ def build_project(config: BuildConfig, enable_agents: bool = False) -> BuildArti
             else:
                 llm_client = LLMClient(
                     model=config.llm_config.model,
-                    api_key=config.llm_config.api_key
+                    api_key=config.llm_config.api_key,
+                    base_url=config.llm_config.base_url
                 )
             orchestrator = AgentOrchestrator(
                 agent_definitions=agent_definitions,
