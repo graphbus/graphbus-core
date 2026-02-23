@@ -40,7 +40,7 @@ class TUIState:
             return []
         deps = []
         for edge in self.graph_data.get(edges, []):
-            if edge.get(from) == agent_name:
+            if edge.get("from") == agent_name:
                 deps.append(edge.get(to))
         return deps
 
