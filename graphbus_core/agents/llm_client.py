@@ -1,16 +1,17 @@
 """
 LLM client for GraphBus agent negotiation — powered by LiteLLM.
 
-Default provider: spicychai cluster (Sravan's private HAProxy → LM Studio pool).
-  Base URL : http://spicychai.com:3443/light/v1
-  Model    : openai/mistralai/ministral-3-14b-reasoning
-  Key      : SPICYCHAI_API_KEY env var (falls back to constant)
+Default model: anthropic/claude-haiku-4-5 (set ANTHROPIC_API_KEY).
 
 Override with any LiteLLM-compatible provider:
-  ANTHROPIC_API_KEY   — claude-* models
+  ANTHROPIC_API_KEY   — claude-* models (default)
   DEEPSEEK_API_KEY    — deepseek/* models
   OPENAI_API_KEY      — gpt-* models
   OPENROUTER_API_KEY  — openrouter/* models
+
+For self-hosted / custom OpenAI-compatible endpoints (e.g. spicychai):
+  Pass model="openai/<model-name>", api_key=..., base_url=...
+  Or set OPENAI_API_BASE + OPENAI_API_KEY env vars.
 
 Note: GRAPHBUS_API_KEY is for the warehousing layer only, not LLM calls.
 """
@@ -44,12 +45,13 @@ class LLMClient:
     """
     LiteLLM-backed LLM client for GraphBus agent negotiation.
 
-    Defaults to the spicychai private LLM cluster (OpenAI-compatible).
+    Default: anthropic/claude-haiku-4-5 — requires ANTHROPIC_API_KEY.
+
     Pass any model string LiteLLM supports to switch providers:
-      "openai/mistralai/ministral-3-14b-reasoning"  ← spicychai (default)
-      "openai/google/gemma-3-4b"                    ← spicychai light
-      "deepseek/deepseek-reasoner"                  ← DeepSeek (needs DEEPSEEK_API_KEY)
-      "claude-3-5-sonnet-20241022"                  ← Anthropic
+      "anthropic/claude-haiku-4-5"                  ← default
+      "anthropic/claude-sonnet-4-5"                 ← Anthropic Sonnet
+      "deepseek/deepseek-reasoner"                  ← DeepSeek R1
+      "openai/mistralai/ministral-3-14b-reasoning"  ← spicychai or custom base
       "openrouter/anthropic/claude-3.5-sonnet"      ← OpenRouter
     """
 
@@ -65,20 +67,14 @@ class LLMClient:
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-        # Resolve credentials: explicit args > env vars > spicychai defaults
-        # For openai/* prefixed models with no explicit key/base, default to spicychai.
-        is_spicychai_model = (
-            base_url is None
-            and api_key is None
-            and not os.getenv("OPENAI_API_KEY")
-            and not os.getenv("OPENAI_API_BASE")
-        )
-        if is_spicychai_model and model.startswith("openai/"):
+        # For openai/* models with no explicit key/base, fall back to spicychai.
+        is_openai_compat = model.startswith("openai/")
+        if is_openai_compat and api_key is None and base_url is None:
             self._api_key = _resolve_spicychai_key()
             self._base_url = _resolve_spicychai_base()
         else:
             self._api_key = api_key
-            self._base_url = base_url or os.getenv("OPENAI_API_BASE") or os.getenv("SPICYCHAI_BASE_URL")
+            self._base_url = base_url or os.getenv("OPENAI_API_BASE")
 
     def generate(self, prompt: str, system: Optional[str] = None) -> str:
         messages = []

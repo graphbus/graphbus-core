@@ -3,10 +3,7 @@ Centralized constants and defaults for GraphBus
 """
 
 # Default LLM model for agent orchestration (LiteLLM model string format).
-# Using spicychai cluster — OpenAI-compatible HAProxy pool with local LM Studio nodes.
-# Set SPICYCHAI_BASE_URL and SPICYCHAI_API_KEY, or OPENAI_API_BASE + OPENAI_API_KEY.
-# See https://docs.litellm.ai/docs/providers/openai_compatible for custom endpoints.
-DEFAULT_LLM_MODEL = "openai/mistralai/ministral-3-14b-reasoning"
+DEFAULT_LLM_MODEL = "anthropic/claude-haiku-4-5"
 
 # spicychai cluster (Sravan's private LLM pool — HAProxy over LM Studio nodes)
 SPICYCHAI_BASE_URL = "http://spicychai.com:3443/light/v1"

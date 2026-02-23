@@ -34,13 +34,14 @@ _KEY_MIN_LEN: int = 16  # gb_ + 13 chars minimum
 
 # Supported LLM models: display name → (env_var, model_string)
 LLM_MODELS: dict[str, tuple[str, str]] = {
-    "1": ("DeepSeek R1  (recommended)", "DEEPSEEK_API_KEY",  "deepseek/deepseek-reasoner"),
-    "2": ("Claude Sonnet",              "ANTHROPIC_API_KEY", "claude-sonnet-4-5"),
-    "3": ("GPT-4o",                     "OPENAI_API_KEY",    "gpt-4o"),
-    "4": ("OpenRouter  (any model)",    "OPENROUTER_API_KEY","openrouter/auto"),
+    "1": ("Claude Haiku  (recommended)", "ANTHROPIC_API_KEY", "anthropic/claude-haiku-4-5"),
+    "2": ("Claude Sonnet",               "ANTHROPIC_API_KEY", "anthropic/claude-sonnet-4-5"),
+    "3": ("GPT-4o",                      "OPENAI_API_KEY",    "gpt-4o"),
+    "4": ("DeepSeek R1",                 "DEEPSEEK_API_KEY",  "deepseek/deepseek-reasoner"),
+    "5": ("OpenRouter  (any model)",     "OPENROUTER_API_KEY","openrouter/auto"),
 }
-DEFAULT_MODEL_KEY = "deepseek/deepseek-reasoner"
-DEFAULT_MODEL_ENV = "DEEPSEEK_API_KEY"
+DEFAULT_MODEL_KEY = "anthropic/claude-haiku-4-5"
+DEFAULT_MODEL_ENV = "ANTHROPIC_API_KEY"
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +198,12 @@ def _prompt_for_model(console=None) -> tuple[str, str]:
         for num, (label, env_var, _) in LLM_MODELS.items():
             print(f"  {num}. {label}  ({env_var})")
         print()
+        valid = list(LLM_MODELS.keys())
         while True:
             choice = input("Enter number [1]: ").strip() or "1"
-            if choice in LLM_MODELS:
+            if choice in valid:
                 break
-            print("Invalid choice. Enter 1, 2, 3, or 4.")
+            print(f"Invalid choice. Enter one of: {', '.join(valid)}.")
 
     label, env_var, model_str = LLM_MODELS[choice]
 
