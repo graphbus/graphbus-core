@@ -21,6 +21,9 @@ class AgentEventLoop:
     def pause(self):
         self.paused = True
     
+    def resume(self):
+        self.paused = False
+    
     def request_pause(self):
         self.paused = True
     
