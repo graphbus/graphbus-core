@@ -36,6 +36,8 @@ def ns():
     Examples:
       graphbus ns list
       graphbus ns create backend-api --desc "Backend service agents"
+      graphbus ns use backend-api
+      graphbus ns current
       graphbus ns show backend-api
       graphbus ns topology backend-api
       graphbus ns topology --all
@@ -46,9 +48,10 @@ def ns():
 @ns.command("list")
 @click.option("--project-root", "-p", default=".", type=click.Path(exists=True))
 def ns_list(project_root):
-    """List all namespaces."""
+    """List all namespaces. The active namespace is marked with ✦."""
     registry = _get_registry(project_root)
     namespaces = registry.list_namespaces()
+    current = registry.get_current()
 
     if not namespaces:
         console.print("[dim]No namespaces found. Create one with:[/dim]")
@@ -56,20 +59,26 @@ def ns_list(project_root):
         return
 
     table = Table(title="Namespaces", border_style="cyan")
+    table.add_column("", width=2)   # active marker
     table.add_column("Name", style="bold")
     table.add_column("Description")
     table.add_column("Agents", justify="right")
     table.add_column("Topics", justify="right")
 
     for ns_info in namespaces:
+        is_active = ns_info["name"] == current
+        marker = "[green]✦[/green]" if is_active else ""
+        name_cell = f"[green]{ns_info['name']}[/green]" if is_active else ns_info["name"]
         table.add_row(
-            ns_info["name"],
+            marker,
+            name_cell,
             ns_info.get("description", ""),
             str(ns_info["agent_count"]),
             str(ns_info["topic_count"]),
         )
 
     console.print(table)
+    console.print(f"[dim]Active namespace: [bold]{current}[/bold]  (change with: graphbus ns use <name>)[/dim]")
 
 
 @ns.command("create")
@@ -84,6 +93,56 @@ def ns_create(name, desc, project_root):
         console.print(f"[green]✓[/green] Namespace [bold]{name}[/bold] created")
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
+
+
+@ns.command("use")
+@click.argument("name")
+@click.option("--project-root", "-p", default=".", type=click.Path(exists=True))
+def ns_use(name, project_root):
+    """Switch the active namespace context.
+
+    \b
+    The active namespace is used by default when running:
+      graphbus negotiate .graphbus --intent "..."
+      graphbus build agents/ --namespace <name>
+
+    \b
+    Examples:
+      graphbus ns use backend-api
+      graphbus ns use production
+    """
+    registry = _get_registry(project_root)
+    try:
+        registry.set_current(name)
+        console.print(f"[green]✓[/green] Switched to namespace [bold]{name}[/bold]")
+        console.print(f"  [dim]Intent commands will now default to: --namespace {name}[/dim]")
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@ns.command("current")
+@click.option("--project-root", "-p", default=".", type=click.Path(exists=True))
+def ns_current(project_root):
+    """Show the active namespace context."""
+    registry = _get_registry(project_root)
+    current = registry.get_current()
+    namespaces = {ns_info["name"] for ns_info in registry.list_namespaces()}
+
+    if current not in namespaces:
+        console.print(
+            f"[yellow]Active namespace:[/yellow] [bold]{current}[/bold]  "
+            f"[dim](not yet created — run: graphbus ns create {current})[/dim]"
+        )
+    else:
+        ns_obj = registry.get(current)
+        desc = ns_obj.description if ns_obj and ns_obj.description else ""
+        console.print(f"[green]Active namespace:[/green] [bold]{current}[/bold]", end="")
+        if desc:
+            console.print(f"  [dim]{desc}[/dim]")
+        else:
+            console.print()
+        agent_count = len(ns_obj.agents) if ns_obj else 0
+        console.print(f"  [dim]{agent_count} agent(s) registered[/dim]")
 
 
 @ns.command("delete")

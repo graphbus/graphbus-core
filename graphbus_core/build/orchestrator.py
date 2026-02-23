@@ -47,7 +47,8 @@ class AgentOrchestrator:
         user_intent: str = None,
         project_root: str = ".",
         session: Optional[NegotiationSession] = None,
-        enable_git_workflow: bool = True
+        enable_git_workflow: bool = True,
+        namespace: str = "default",
     ):
         """
         Initialize orchestrator.
@@ -61,6 +62,7 @@ class AgentOrchestrator:
             project_root: Root directory of the project
             session: Optional pre-created negotiation session
             enable_git_workflow: Enable git branch/PR workflow
+            namespace: Logical namespace for this negotiation session
         """
         self.agent_definitions = {a.name: a for a in agent_definitions}
         self.agent_graph = agent_graph
@@ -69,6 +71,7 @@ class AgentOrchestrator:
         self.user_intent = user_intent
         self.project_root = project_root
         self.enable_git_workflow = enable_git_workflow
+        self.namespace = namespace
 
         self.agents: Dict[str, LLMAgent] = {}
         self.negotiation_engine = NegotiationEngine(safety_config=self.safety_config, user_intent=user_intent)
@@ -723,7 +726,8 @@ def run_negotiation(
     user_intent: str = None,
     verbose: bool = False,
     project_root: str = ".",
-    enable_git_workflow: bool = True
+    enable_git_workflow: bool = True,
+    namespace: str = "default",
 ) -> dict:
     """
     Run negotiation on existing build artifacts.
@@ -773,7 +777,8 @@ def run_negotiation(
         safety_config=safety_config,
         user_intent=user_intent,
         project_root=project_root,
-        enable_git_workflow=enable_git_workflow
+        enable_git_workflow=enable_git_workflow,
+        namespace=namespace,
     )
 
     print(f"[Negotiation] Safety limits: max_file_changes={safety_config.max_total_file_changes}, max_rounds={safety_config.max_negotiation_rounds}")
@@ -791,6 +796,7 @@ def run_negotiation(
 
     # Return results
     result = {
+        "namespace": namespace,
         "rounds_completed": orchestrator.negotiation_engine.current_round + 1,
         "total_proposals": len(orchestrator.negotiation_engine.proposals),
         "accepted_proposals": len(artifacts.negotiations),

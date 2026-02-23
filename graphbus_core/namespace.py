@@ -253,9 +253,12 @@ class NamespaceRegistry:
     Persists to .graphbus/namespaces.json.
     """
 
+    DEFAULT_NAMESPACE = "default"
+
     def __init__(self, storage_dir: Optional[str] = None):
         self._namespaces: dict[str, Namespace] = {}
         self._storage_path = Path(storage_dir) / "namespaces.json" if storage_dir else None
+        self._context_path = Path(storage_dir) / "context.json" if storage_dir else None
 
         # Auto-load from disk
         if self._storage_path and self._storage_path.exists():
@@ -300,6 +303,38 @@ class NamespaceRegistry:
                 "created_at": ns.created_at,
             })
         return result
+
+    def get_current(self) -> str:
+        """Return the active namespace name (reads from context.json, falls back to 'default')."""
+        if self._context_path and self._context_path.exists():
+            try:
+                with open(self._context_path) as f:
+                    ctx = json.load(f)
+                return ctx.get("current_namespace", self.DEFAULT_NAMESPACE)
+            except (json.JSONDecodeError, OSError):
+                pass
+        return self.DEFAULT_NAMESPACE
+
+    def set_current(self, name: str) -> None:
+        """Persist the active namespace to context.json.
+
+        Raises ValueError if the namespace doesn't exist.
+        """
+        if name not in self._namespaces:
+            raise ValueError(f"Namespace '{name}' not found — create it first with: graphbus ns create {name}")
+        if not self._context_path:
+            raise RuntimeError("NamespaceRegistry has no storage_dir; cannot persist context")
+        self._context_path.parent.mkdir(parents=True, exist_ok=True)
+        ctx: dict = {}
+        if self._context_path.exists():
+            try:
+                with open(self._context_path) as f:
+                    ctx = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        ctx["current_namespace"] = name
+        with open(self._context_path, "w") as f:
+            json.dump(ctx, f, indent=2)
 
     def export_all(self) -> dict:
         """Export all namespaces and their topologies for dashboard visualization."""

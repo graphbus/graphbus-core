@@ -45,6 +45,14 @@ def cli(ctx):
       ci        - CI/CD pipeline generators
 
     \b
+    Namespaces:
+      ns create   - Create a namespace (logical isolation boundary)
+      ns use      - Switch the active namespace context
+      ns current  - Show the active namespace
+      ns list     - List all namespaces
+      ns show     - Detailed view + agent topology
+
+    \b
     Advanced Features:
       state                - Manage agent state persistence
       negotiate            - Run LLM agent negotiation (EXPERIMENTAL)
@@ -54,16 +62,20 @@ def cli(ctx):
 
     \b
     Examples:
-      graphbus tui                          # Launch interactive UI
-      graphbus init my-project              # Create new project
-      graphbus generate agent OrderProcessor  # Generate agent code
-      graphbus build agents/                # Build agents from directory
-      graphbus build agents/ --enable-agents  # Build with agent orchestration
-      graphbus negotiate .graphbus          # Run post-build negotiation
-      graphbus inspect-negotiation .graphbus  # View negotiation history
-      graphbus run .graphbus --debug        # Run with debugger
-      graphbus profile .graphbus            # Profile performance
-      graphbus dashboard .graphbus          # Launch dashboard
+      graphbus tui                                     # Launch interactive UI
+      graphbus init my-project                         # Create new project
+      graphbus generate agent OrderProcessor           # Generate agent code
+      graphbus build agents/                           # Build agents
+      graphbus build agents/ --enable-agents           # Build with LLM orchestration
+      graphbus ns create backend-api                   # Create a namespace
+      graphbus ns use backend-api                      # Switch active namespace
+      graphbus ns current                              # Show active namespace
+      graphbus negotiate .graphbus --intent "add retry logic"
+      graphbus negotiate .graphbus -n backend-api --intent "reduce latency"
+      graphbus inspect-negotiation .graphbus           # View negotiation history
+      graphbus run .graphbus --debug                   # Run with debugger
+      graphbus profile .graphbus                       # Profile performance
+      graphbus dashboard .graphbus                     # Launch dashboard
 
     For more help on a specific command, use:
       graphbus COMMAND --help
