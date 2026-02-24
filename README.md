@@ -7,7 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![Build Status](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#testing)
-[![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange.svg)](https://github.com/graphbus/graphbus-core/releases)
+[![PyPI](https://img.shields.io/pypi/v/graphbus.svg)](https://pypi.org/project/graphbus/)
+[![Version](https://img.shields.io/badge/version-0.5.1-orange.svg)](https://github.com/graphbus/graphbus-core/releases)
 [![graphbus.com](https://img.shields.io/badge/site-graphbus.com-7c3aed.svg)](https://graphbus.com)
 
 [**Website**](https://graphbus.com) · [**Quickstart**](#quickstart) · [**Examples**](#examples) · [**CLI Reference**](#cli-reference) · [**Architecture**](#architecture)
@@ -63,18 +64,27 @@ pip install graphbus
 graphbus init my-project --template microservices
 cd my-project
 
-# Build (static, no LLM)
+# Build the agent graph
 graphbus build agents/
 
-# Run the built artifacts
-graphbus run .graphbus/
-
-# Enable LLM agents for a negotiation round
-export DEEPSEEK_API_KEY=your_key_here  # or ANTHROPIC_API_KEY=sk-ant-...
-graphbus build agents/ --enable-agents
+# Tell your agents what to do
+graphbus negotiate .graphbus --intent "add retry logic to all API calls"
 ```
 
-That's it. Your agents will propose improvements, evaluate each other's proposals, and commit consensus changes. The `run` step uses zero AI budget.
+The `--intent` flag is the primary way to use GraphBus. You describe *what* you want changed in plain English, and your agents negotiate how to implement it — proposing diffs, evaluating each other's work, and committing consensus changes.
+
+```bash
+# More intent examples
+graphbus negotiate .graphbus --intent "add input validation to all endpoints"
+graphbus negotiate .graphbus --intent "refactor error handling to use custom exceptions"
+graphbus negotiate .graphbus --intent "add rate limiting to the payment service"
+
+# Scope to a namespace
+graphbus negotiate .graphbus -n backend-api --intent "reduce latency in hot paths"
+
+# Run the built artifacts (zero AI cost at runtime)
+graphbus run .graphbus/
+```
 
 ---
 
@@ -201,7 +211,7 @@ graphbus [OPTIONS] COMMAND [ARGS]...
 | `graphbus generate agent <Name>` | Generate agent boilerplate |
 | `graphbus profile <artifacts>` | Profile runtime performance |
 | `graphbus dashboard` | Launch web-based visualization dashboard |
-| `graphbus negotiate <path>` | Run a standalone LLM negotiation round |
+| `graphbus negotiate <path> --intent "..."` | **Main command** — tell agents what to improve |
 | `graphbus inspect-negotiation` | Browse negotiation history |
 
 ### Deployment Tools
@@ -346,10 +356,13 @@ cd graphbus-core
 pip install -e .
 ```
 
-### From PyPI (coming soon)
+### From PyPI
 
 ```bash
 pip install graphbus
+
+# With TUI support
+pip install graphbus[tui]
 ```
 
 ### Requirements
@@ -429,7 +442,7 @@ See **[ROADMAP.md](ROADMAP.md)** for the full roadmap with targets and status.
 - [ ] `graphbus test` — agent unit tests with full runtime wired in
 
 **Later:**
-- [ ] PyPI release (`pip install graphbus`)
+- [x] PyPI release (`pip install graphbus`)
 - [x] Multi-provider LLM support (via LiteLLM)
 - [ ] Ollama local LLM backend
 - [ ] Multi-process distributed runtime

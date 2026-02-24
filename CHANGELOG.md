@@ -2,8 +2,8 @@
 
 All notable changes to GraphBus are documented here.
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
-Version scheme: `MAJOR.MINOR.PATCH-stage` (currently pre-1.0 alpha).
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
@@ -15,13 +15,39 @@ Version scheme: `MAJOR.MINOR.PATCH-stage` (currently pre-1.0 alpha).
   print the node's `@schema_method` inventory, and "not started / not enabled" errors include
   the corrective call needed. Aids debugging without requiring a debugger or docs lookup.
 
-### Planned
-- PyPI release (`pip install graphbus`)
-- OpenAI and Ollama LLM backends
-- Visual graph editor (browser-based)
-- Cloud-hosted build service
-- Protocol specification for non-Python implementations
-- `graphbus_cli.tui` — full Textual TUI (in progress)
+---
+
+## [0.5.1] - 2026-02-24
+
+### Fixed
+- **TUI launch crash** — `graphbus tui` failed with a misleading "textual not installed" error
+  even when textual was installed. The actual cause was a missing `chat_app.py` module that was
+  never included in the package. Unit tests passed because they mocked the module; integration
+  tests silently skipped themselves via `pytest.importorskip`.
+
+### Added
+- `graphbus_cli/tui/chat_app.py` — Chat-based Textual TUI that translates natural language
+  into GraphBus CLI commands. Supports all core commands via intent parsing.
+
+---
+
+## [0.5.0] - 2026-02-20
+
+### Added
+- **Namespace support** — `graphbus ns create|use|current|list|show` for logical isolation.
+- **Ingest command** — `graphbus ingest` converts existing codebases into GraphBus agents.
+- **Model management** — `graphbus model` for LLM model configuration.
+- **Auth command** — `graphbus auth` for API key management.
+- **Session management** — `graphbus session` for session persistence.
+- Generalized memory system (not TUI-specific).
+- Expanded human-in-the-loop module with resume support.
+- Event loop classes for TUI orchestration.
+- Arbiter conflict detection and model editor.
+
+### Fixed
+- Syntax error in `state.py`.
+- Multiple missing modules and methods required by test suite.
+- Test coverage improved from ~70% to 85%.
 
 ---
 
@@ -120,9 +146,6 @@ Initial alpha release. Core protocol implemented and tested.
 - **JSON artifacts** are the deployment unit — agents are loaded from artifacts at runtime
 
 ### Known Limitations
-- LLM backends: Claude (Anthropic) only. OpenAI/Ollama adapters planned.
-- TUI (`graphbus tui`) CLI command exists but Textual UI implementation is in progress
-- PyPI package not yet published — install from source
 - `IS_ARBITER = True` agents cannot have `__init__` parameters (known bug, workaround: use `super().__init__()`)
 
 ---
@@ -143,5 +166,7 @@ Initial alpha release. Core protocol implemented and tested.
 
 ---
 
-[Unreleased]: https://github.com/graphbus/graphbus-core/compare/v0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/graphbus/graphbus-core/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/graphbus/graphbus-core/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/graphbus/graphbus-core/compare/v0.1.0-alpha...v0.5.0
 [0.1.0-alpha]: https://github.com/graphbus/graphbus-core/releases/tag/v0.1.0-alpha
