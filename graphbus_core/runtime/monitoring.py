@@ -149,10 +149,20 @@ class PrometheusMetrics:
             for agent, status in self.agent_health_status.items():
                 lines.append(f'graphbus_agent_health{{agent="{agent}"}} {status}')
 
-            # Histogram metrics - export summary statistics
+            # Duration metrics are exported as Prometheus *summaries*, not histograms.
+            #
+            # Prometheus distinguishes two client-computed distribution types:
+            #   histogram — cumulative bucket counts with le= labels
+            #   summary   — pre-computed quantiles with quantile= labels
+            #
+            # We compute quantiles from the sliding-window deque and emit them with
+            # quantile= labels, which is the summary format.  Declaring the type as
+            # "histogram" while emitting quantile= lines is a format violation:
+            # Prometheus parsers reject or mis-categorise the metric family, making
+            # the duration data invisible in Grafana / alerting rules.
             lines.append("")
             lines.append("# HELP graphbus_method_duration_seconds Method execution duration")
-            lines.append("# TYPE graphbus_method_duration_seconds histogram")
+            lines.append("# TYPE graphbus_method_duration_seconds summary")
             for key, durations in self.method_duration_seconds.items():
                 if durations:
                     agent, method = key.rsplit('.', 1) if '.' in key else (key, 'unknown')
@@ -160,28 +170,26 @@ class PrometheusMetrics:
                     count = len(sorted_durations)
                     total = sum(sorted_durations)
 
-                    # Export bucket counts and sum
                     labels = f'agent="{agent}",method="{method}"'
                     lines.append(f'graphbus_method_duration_seconds_count{{{labels}}} {count}')
                     lines.append(f'graphbus_method_duration_seconds_sum{{{labels}}} {total}')
 
-                    # Add quantiles (p50, p95, p99)
-                    if count > 0:
-                        p50_idx = int(count * 0.5)
-                        p95_idx = int(count * 0.95)
-                        p99_idx = int(count * 0.99)
+                    # Quantile lines (summary format: quantile= label, no _bucket suffix)
+                    p50_idx = int(count * 0.5)
+                    p95_idx = int(count * 0.95)
+                    p99_idx = int(count * 0.99)
 
-                        p50 = sorted_durations[min(p50_idx, count - 1)]
-                        p95 = sorted_durations[min(p95_idx, count - 1)]
-                        p99 = sorted_durations[min(p99_idx, count - 1)]
+                    p50 = sorted_durations[min(p50_idx, count - 1)]
+                    p95 = sorted_durations[min(p95_idx, count - 1)]
+                    p99 = sorted_durations[min(p99_idx, count - 1)]
 
-                        lines.append(f'graphbus_method_duration_seconds{{quantile="0.5",{labels}}} {p50}')
-                        lines.append(f'graphbus_method_duration_seconds{{quantile="0.95",{labels}}} {p95}')
-                        lines.append(f'graphbus_method_duration_seconds{{quantile="0.99",{labels}}} {p99}')
+                    lines.append(f'graphbus_method_duration_seconds{{quantile="0.5",{labels}}} {p50}')
+                    lines.append(f'graphbus_method_duration_seconds{{quantile="0.95",{labels}}} {p95}')
+                    lines.append(f'graphbus_method_duration_seconds{{quantile="0.99",{labels}}} {p99}')
 
             lines.append("")
             lines.append("# HELP graphbus_event_processing_duration_seconds Event processing duration")
-            lines.append("# TYPE graphbus_event_processing_duration_seconds histogram")
+            lines.append("# TYPE graphbus_event_processing_duration_seconds summary")
             for topic, durations in self.event_processing_duration_seconds.items():
                 if durations:
                     sorted_durations = sorted(durations)
@@ -192,19 +200,17 @@ class PrometheusMetrics:
                     lines.append(f'graphbus_event_processing_duration_seconds_count{{{labels}}} {count}')
                     lines.append(f'graphbus_event_processing_duration_seconds_sum{{{labels}}} {total}')
 
-                    # Add quantiles
-                    if count > 0:
-                        p50_idx = int(count * 0.5)
-                        p95_idx = int(count * 0.95)
-                        p99_idx = int(count * 0.99)
+                    p50_idx = int(count * 0.5)
+                    p95_idx = int(count * 0.95)
+                    p99_idx = int(count * 0.99)
 
-                        p50 = sorted_durations[min(p50_idx, count - 1)]
-                        p95 = sorted_durations[min(p95_idx, count - 1)]
-                        p99 = sorted_durations[min(p99_idx, count - 1)]
+                    p50 = sorted_durations[min(p50_idx, count - 1)]
+                    p95 = sorted_durations[min(p95_idx, count - 1)]
+                    p99 = sorted_durations[min(p99_idx, count - 1)]
 
-                        lines.append(f'graphbus_event_processing_duration_seconds{{quantile="0.5",{labels}}} {p50}')
-                        lines.append(f'graphbus_event_processing_duration_seconds{{quantile="0.95",{labels}}} {p95}')
-                        lines.append(f'graphbus_event_processing_duration_seconds{{quantile="0.99",{labels}}} {p99}')
+                    lines.append(f'graphbus_event_processing_duration_seconds{{quantile="0.5",{labels}}} {p50}')
+                    lines.append(f'graphbus_event_processing_duration_seconds{{quantile="0.95",{labels}}} {p95}')
+                    lines.append(f'graphbus_event_processing_duration_seconds{{quantile="0.99",{labels}}} {p99}')
 
             # Add process metrics
             uptime = time.time() - self.start_time
