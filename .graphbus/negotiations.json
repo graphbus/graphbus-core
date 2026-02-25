@@ -5111,6 +5111,78 @@
       "modified_files": [],
       "commit_count": 0,
       "developer_feedback": []
+    },
+    {
+      "session_id": "negotiate_436a1ea4",
+      "intent": "Agent-driven code improvements",
+      "timestamp": "2026-02-25T10:31:49.072534",
+      "branch_name": "graphbus/negotiate-agent-driven-code-improvements-4ea279",
+      "pr_number": null,
+      "pr_url": null,
+      "status": "in_progress",
+      "modified_files": [],
+      "commit_count": 0,
+      "developer_feedback": []
+    },
+    {
+      "session_id": "negotiate_d1801667",
+      "intent": "Agent-driven code improvements",
+      "timestamp": "2026-02-25T10:31:51.866394",
+      "branch_name": "graphbus/negotiate-agent-driven-code-improvements-b811f8",
+      "pr_number": null,
+      "pr_url": null,
+      "status": "in_progress",
+      "modified_files": [],
+      "commit_count": 0,
+      "developer_feedback": []
+    },
+    {
+      "session_id": "negotiate_3f236732",
+      "intent": "Agent-driven code improvements",
+      "timestamp": "2026-02-25T10:31:54.509015",
+      "branch_name": "graphbus/negotiate-agent-driven-code-improvements-b2a05e",
+      "pr_number": null,
+      "pr_url": null,
+      "status": "in_progress",
+      "modified_files": [],
+      "commit_count": 0,
+      "developer_feedback": []
+    },
+    {
+      "session_id": "negotiate_22184323",
+      "intent": "Agent-driven code improvements",
+      "timestamp": "2026-02-25T10:31:57.081569",
+      "branch_name": "graphbus/negotiate-agent-driven-code-improvements-f48f53",
+      "pr_number": null,
+      "pr_url": null,
+      "status": "in_progress",
+      "modified_files": [],
+      "commit_count": 0,
+      "developer_feedback": []
+    },
+    {
+      "session_id": "negotiate_ed1f0600",
+      "intent": "Agent-driven code improvements",
+      "timestamp": "2026-02-25T10:31:59.569822",
+      "branch_name": "graphbus/negotiate-agent-driven-code-improvements-83c881",
+      "pr_number": null,
+      "pr_url": null,
+      "status": "in_progress",
+      "modified_files": [],
+      "commit_count": 0,
+      "developer_feedback": []
+    },
+    {
+      "session_id": "negotiate_5dd376d7",
+      "intent": "Agent-driven code improvements",
+      "timestamp": "2026-02-25T10:32:02.198837",
+      "branch_name": "graphbus/negotiate-agent-driven-code-improvements-7d948f",
+      "pr_number": null,
+      "pr_url": null,
+      "status": "in_progress",
+      "modified_files": [],
+      "commit_count": 0,
+      "developer_feedback": []
     }
   ],
   "active_session": null
