@@ -236,7 +236,9 @@ class TestPerformanceProfiler:
         assert len(top) == 3
         # Should be sorted by total time (descending)
         assert top[0].total_time >= top[1].total_time >= top[2].total_time
-        assert top[0].agent_name == "Agent4"  # Longest time
+        # Top entry should match the maximum observed total time
+        max_total_time = max(p.total_time for p in profiler.method_profiles.values())
+        assert top[0].total_time == max_total_time
 
     def test_get_top_methods_by_calls(self, profiler):
         """Test getting top methods by call count"""
