@@ -144,6 +144,14 @@ ENV/
 env.bak/
 venv.bak/
 
+# Editor / tool backup files — these are dev artefacts, not source code.
+# Common sources: vim (.py.bak), IDEs (.py.backup), manual copies before
+# large edits.  They were previously committed by accident (see git log for
+# examples/hello_graphbus/agents/*.py.backup).
+*.py.backup
+*.py.bak
+*.bak
+
 # Spyder project settings
 .spyderproject
 .spyproject
