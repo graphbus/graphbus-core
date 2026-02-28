@@ -2,6 +2,7 @@
 Agent orchestrator - activates agents and runs negotiation
 """
 
+import logging
 from typing import Dict, List, Optional
 from graphbus_core.model.agent_def import AgentDefinition
 from graphbus_core.model.graph import AgentGraph
@@ -26,6 +27,8 @@ from graphbus_core.exceptions import (
 )
 from graphbus_core.utils import format_exception_for_user
 
+
+logger = logging.getLogger(__name__)
 
 class AgentOrchestrator:
     """
@@ -113,7 +116,7 @@ class AgentOrchestrator:
         """
         Activate all agents (instantiate LLM agents).
         """
-        print("\n[Orchestrator] Activating agents...")
+        logger.info("[Orchestrator] Activating agents...")
 
         # Get activation order from topological sort
         activation_order = self.agent_graph.get_agent_activation_order()
@@ -127,27 +130,27 @@ class AgentOrchestrator:
                     user_intent=self.user_intent  # Pass user intent to agent
                 )
                 self.agents[agent_name] = agent
-                print(f"  ✓ Activated {agent_name}")
+                logger.info(f"  ✓ Activated {agent_name}")
                 self._broadcast_message("Orchestrator", f"Activated agent: {agent_name}", "info")
 
-        print(f"[Orchestrator] {len(self.agents)} agents activated")
+        logger.info(f"[Orchestrator] {len(self.agents)} agents activated")
         if self.user_intent:
-            print(f"[Orchestrator] All agents aware of user intent: \"{self.user_intent}\"")
+            logger.info(f"[Orchestrator] All agents aware of user intent: \"{self.user_intent}\"")
 
     def run_analysis_phase(self) -> None:
         """
         Each agent analyzes its own code.
         Includes intent relevance and code size checks.
         """
-        print("\n[Orchestrator] Running analysis phase...")
+        logger.info("[Orchestrator] Running analysis phase...")
         if self.user_intent:
-            print(f"[Orchestrator] User intent: {self.user_intent}")
+            logger.info(f"[Orchestrator] User intent: {self.user_intent}")
 
         intent_relevance_results = {}
         code_size_results = {}
 
         for agent_name, agent in self.agents.items():
-            print(f"  Analyzing {agent_name}...")
+            logger.info(f"  Analyzing {agent_name}...")
 
             # Check intent relevance if user intent is provided
             if self.user_intent:
@@ -155,42 +158,42 @@ class AgentOrchestrator:
                     relevance = agent.check_intent_relevance(self.user_intent)
                     intent_relevance_results[agent_name] = relevance
                     if relevance.get("relevant", False):
-                        print(f"    ✓ Intent relevant (confidence: {relevance.get('confidence', 0):.2f})")
-                        print(f"      Reason: {relevance.get('reasoning', 'N/A')}")
+                        logger.info(f"    ✓ Intent relevant (confidence: {relevance.get('confidence', 0):.2f})")
+                        logger.info(f"      Reason: {relevance.get('reasoning', 'N/A')}")
                         self._broadcast_message(
                             agent_name,
                             f"Intent relevant (confidence: {relevance.get('confidence', 0):.2f}) - {relevance.get('reasoning', 'N/A')}",
                             "success"
                         )
                     else:
-                        print(f"    ✗ Intent NOT relevant (confidence: {relevance.get('confidence', 0):.2f})")
-                        print(f"      Reason: {relevance.get('reasoning', 'N/A')}")
+                        logger.warning(f"✗ Intent NOT relevant (confidence: {relevance.get('confidence', 0):.2f})")
+                        logger.info(f"      Reason: {relevance.get('reasoning', 'N/A')}")
                         self._broadcast_message(
                             agent_name,
                             f"Intent not relevant - {relevance.get('reasoning', 'N/A')}",
                             "info"
                         )
                 except (IntentRelevanceError, LLMResponseError) as e:
-                    print(f"    Warning: Intent relevance check failed: {format_exception_for_user(e)}")
+                    logger.warning(f"Warning: Intent relevance check failed: {format_exception_for_user(e)}")
 
             # Check code size
             try:
                 size_check = agent.check_code_size()
                 code_size_results[agent_name] = size_check
                 if size_check.get("exceeds_threshold", False):
-                    print(f"    ⚠ Code size exceeds 100 lines ({size_check.get('line_count')} lines)")
+                    logger.warning(f"⚠ Code size exceeds 100 lines ({size_check.get('line_count')} lines)")
                     suggestions = size_check.get("suggestions", [])
                     if suggestions:
-                        print(f"      Refactoring suggestions:")
+                        logger.info(f"      Refactoring suggestions:")
                         for sugg in suggestions[:2]:  # Show first 2
-                            print(f"        - {sugg}")
+                            logger.info(f"        - {sugg}")
                     new_agents = size_check.get("potential_new_agents", [])
                     if new_agents:
-                        print(f"      Potential new agents:")
+                        logger.info(f"      Potential new agents:")
                         for new_agent in new_agents[:2]:
-                            print(f"        - {new_agent.get('name')}: {new_agent.get('responsibility')}")
+                            logger.info(f"        - {new_agent.get('name')}: {new_agent.get('responsibility')}")
             except (CodeAnalysisError, LLMResponseError) as e:
-                print(f"    Warning: Code size check failed: {format_exception_for_user(e)}")
+                logger.warning(f"Warning: Code size check failed: {format_exception_for_user(e)}")
 
             # Regular code analysis
             try:
@@ -209,11 +212,11 @@ class AgentOrchestrator:
                 analysis = agent.analyze_code(user_intent=analysis_context)
                 improvements = analysis.get("potential_improvements", [])
                 if improvements:
-                    print(f"    Found {len(improvements)} potential improvements:")
+                    logger.info(f"    Found {len(improvements)} potential improvements:")
                     for imp in improvements[:3]:  # Show first 3
-                        print(f"      - {imp}")
+                        logger.info(f"      - {imp}")
             except (CodeAnalysisError, LLMResponseError) as e:
-                print(f"    Warning: Analysis failed: {format_exception_for_user(e)}")
+                logger.warning(f"Warning: Analysis failed: {format_exception_for_user(e)}")
 
         # Store results in orchestrator for later use
         self.intent_relevance_results = intent_relevance_results
@@ -224,10 +227,10 @@ class AgentOrchestrator:
             relevant_agents = [name for name, result in intent_relevance_results.items()
                              if result.get("relevant", False)]
             if not relevant_agents:
-                print("\n[Orchestrator] ⚠ WARNING: No agent found the intent relevant!")
-                print("[Orchestrator] This may indicate a need for a NEW AGENT to handle this intent.")
-                print(f"[Orchestrator] Intent: {self.user_intent}")
-                print("[Orchestrator] Consider creating a new agent with this responsibility.")
+                logger.info("[Orchestrator] ⚠ WARNING: No agent found the intent relevant!")
+                logger.info("[Orchestrator] This may indicate a need for a NEW AGENT to handle this intent.")
+                logger.info(f"[Orchestrator] Intent: {self.user_intent}")
+                logger.info("[Orchestrator] Consider creating a new agent with this responsibility.")
 
     def collect_clarifying_questions(self) -> list:
         """
@@ -242,7 +245,7 @@ class AgentOrchestrator:
         if not self.user_intent:
             return []
 
-        print("\n[Orchestrator] Collecting clarifying questions from agents...")
+        logger.info("[Orchestrator] Collecting clarifying questions from agents...")
 
         all_questions = []
 
@@ -256,13 +259,13 @@ class AgentOrchestrator:
             try:
                 questions = agent.generate_clarifying_questions(self.user_intent)
                 if questions:
-                    print(f"  {agent_name}: {len(questions)} question(s)")
+                    logger.info(f"  {agent_name}: {len(questions)} question(s)")
                     all_questions.extend(questions)
             except LLMResponseError as e:
-                print(f"  Warning: {agent_name} question generation failed: {format_exception_for_user(e)}")
+                logger.warning(f"Warning: {agent_name} question generation failed: {format_exception_for_user(e)}")
 
         if all_questions:
-            print(f"\n[Orchestrator] Collected {len(all_questions)} total questions")
+            logger.info(f"[Orchestrator] Collected {len(all_questions)} total questions")
             # Prioritize critical questions
             critical = [q for q in all_questions if q.get('importance') == 'critical']
             nice_to_have = [q for q in all_questions if q.get('importance') != 'critical']
@@ -270,7 +273,7 @@ class AgentOrchestrator:
             # Return up to 4 questions (tool limit), critical first
             return (critical + nice_to_have)[:4]
         else:
-            print("[Orchestrator] No clarifying questions needed")
+            logger.info("[Orchestrator] No clarifying questions needed")
             return []
 
     def run_proposal_phase(self) -> None:
@@ -313,65 +316,65 @@ class AgentOrchestrator:
         Returns:
             Reconciliation data with recommendations
         """
-        print("\n[Orchestrator] Running reconciliation phase...")
+        logger.info("[Orchestrator] Running reconciliation phase...")
 
         # Get all proposals
         proposals = list(self.negotiation_engine.proposals.values())
 
         if not proposals:
-            print("[Orchestrator] No proposals to reconcile")
+            logger.info("[Orchestrator] No proposals to reconcile")
             return {}
 
         # Find arbiter agent
         arbiter_agents = [a for a in self.agents.values() if a.is_arbiter]
 
         if not arbiter_agents:
-            print("[Orchestrator] No arbiter configured, skipping reconciliation")
+            logger.info("[Orchestrator] No arbiter configured, skipping reconciliation")
             return {}
 
         arbiter = arbiter_agents[0]
-        print(f"[Orchestrator] Arbiter {arbiter.name} reconciling {len(proposals)} proposals...")
+        logger.info(f"[Orchestrator] Arbiter {arbiter.name} reconciling {len(proposals)} proposals...")
 
         try:
             reconciliation = arbiter.reconcile_all_proposals(proposals, user_intent=self.user_intent)
 
             # Display reconciliation results
-            print(f"\n[Orchestrator] Reconciliation complete:")
-            print(f"  Overall: {reconciliation.get('overall_assessment', 'N/A')}")
+            logger.info("[Orchestrator] Reconciliation complete:")
+            logger.info(f"  Overall: {reconciliation.get('overall_assessment', 'N/A')}")
 
             conflicts = reconciliation.get('conflicts', [])
             if conflicts:
-                print(f"\n  Conflicts identified ({len(conflicts)}):")
+                logger.info(f"\n  Conflicts identified ({len(conflicts)}):")
                 self._broadcast_message("Arbiter", f"Identified {len(conflicts)} conflict(s)", "warning")
                 for conflict in conflicts:
-                    print(f"    - {conflict.get('issue', 'N/A')}")
-                    print(f"      Proposals: {conflict.get('proposals', [])}")
+                    logger.info(f"    - {conflict.get('issue', 'N/A')}")
+                    logger.info(f"      Proposals: {conflict.get('proposals', [])}")
                     self._broadcast_message("Arbiter", f"Conflict: {conflict.get('issue', 'N/A')}", "warning")
 
             recommendations = reconciliation.get('recommendations', {})
             if recommendations:
-                print(f"\n  Recommendations:")
+                logger.info(f"\n  Recommendations:")
                 for prop_id, rec in recommendations.items():
                     action = rec.get('action', 'proceed')
                     priority = rec.get('priority', 3)
                     reasoning = rec.get('reasoning', 'N/A')
 
                     symbol = "✓" if action == "proceed" else ("⚠" if action == "modify" else "✗")
-                    print(f"    {symbol} {prop_id}: {action.upper()} (priority: {priority})")
-                    print(f"       {reasoning}")
+                    logger.info(f"    {symbol} {prop_id}: {action.upper()} (priority: {priority})")
+                    logger.info(f"       {reasoning}")
 
             modifications = reconciliation.get('suggested_modifications', [])
             if modifications:
-                print(f"\n  Suggested modifications ({len(modifications)}):")
+                logger.info(f"\n  Suggested modifications ({len(modifications)}):")
                 for mod in modifications:
-                    print(f"    - {mod.get('proposal', 'N/A')}: {mod.get('suggestion', 'N/A')}")
+                    logger.info(f"    - {mod.get('proposal', 'N/A')}: {mod.get('suggestion', 'N/A')}")
 
             # Store reconciliation in negotiation engine for later use
             self.negotiation_engine.reconciliation = reconciliation
             return reconciliation
 
         except Exception as e:
-            print(f"[Orchestrator] Warning: Reconciliation failed: {e}")
+            logger.info(f"[Orchestrator] Warning: Reconciliation failed: {e}")
             return {}
 
     def run_negotiation_round(self) -> List[CommitRecord]:
@@ -383,7 +386,7 @@ class AgentOrchestrator:
         Returns:
             List of commits created
         """
-        print(f"\n[Orchestrator] Running negotiation round {self.negotiation_engine.current_round}...")
+        logger.info(f"[Orchestrator] Running negotiation round {self.negotiation_engine.current_round}...")
 
         # Agents evaluate proposals IN PARALLEL
         async_engine = AsyncNegotiationEngine(safety_config=self.safety_config, user_intent=self.user_intent)
@@ -402,7 +405,7 @@ class AgentOrchestrator:
         # Create commits from accepted proposals (passes agents for arbitration)
         commits = self.negotiation_engine.create_commits(self.agents)
 
-        print(f"[Orchestrator] Round {self.negotiation_engine.current_round}: {len(commits)} commits created")
+        logger.info(f"[Orchestrator] Round {self.negotiation_engine.current_round}: {len(commits)} commits created")
         return commits
 
     def apply_code_changes(self, commits: List[CommitRecord]) -> List[str]:
@@ -427,7 +430,7 @@ class AgentOrchestrator:
         Args:
             modified_files: List of file paths that were modified
         """
-        print(f"\n[Orchestrator] Reloading source code for modified agents...")
+        logger.info("[Orchestrator] Reloading source code for modified agents...")
 
         for file_path in modified_files:
             # Find which agent owns this file
@@ -442,10 +445,10 @@ class AgentOrchestrator:
                         agent.agent_def.source_code = new_source
                         agent.code_line_count = len(new_source.split('\n'))
 
-                        print(f"  ↻ Reloaded {agent_name} ({agent.code_line_count} lines)")
+                        logger.info(f"  ↻ Reloaded {agent_name} ({agent.code_line_count} lines)")
 
                     except Exception as e:
-                        print(f"  Warning: Could not reload {agent_name}: {e}")
+                        logger.warning(f"Warning: Could not reload {agent_name}: {e}")
 
     def run_refactoring_validation_phase(self) -> None:
         """
@@ -456,7 +459,7 @@ class AgentOrchestrator:
         - Methods that should be extracted to shared modules
         - Complexity violations
         """
-        print("\n[Orchestrator] Running refactoring validation...")
+        logger.info("[Orchestrator] Running refactoring validation...")
 
         # Collect all agent source code
         agent_sources = {
@@ -468,21 +471,21 @@ class AgentOrchestrator:
         duplications = self.refactoring_validator.detect_duplication_across_agents(agent_sources)
 
         if duplications:
-            print(f"\n[Orchestrator] ⚠️  Found {len(duplications)} code duplications:")
+            logger.info(f"[Orchestrator] ⚠️  Found {len(duplications)} code duplications:")
             for dup in duplications:
-                print(f"  • {dup['method_name']} duplicated in {dup['agent1']} and {dup['agent2']}")
-                print(f"    Similarity: {dup['similarity']:.0%}, Lines: {dup['lines']}")
+                logger.info(f"  • {dup['method_name']} duplicated in {dup['agent1']} and {dup['agent2']}")
+                logger.info(f"    Similarity: {dup['similarity']:.0%}, Lines: {dup['lines']}")
 
             # Get extraction suggestions
             suggestions = self.refactoring_validator.suggest_extraction(duplications)
 
             if suggestions:
-                print(f"\n[Orchestrator] 💡 Refactoring suggestions:")
+                logger.info("[Orchestrator] 💡 Refactoring suggestions:")
                 for suggestion in suggestions:
-                    print(f"  • Extract {suggestion['method_name']} → {suggestion['suggested_module']}.py")
-                    print(f"    Affects: {', '.join(suggestion['affected_agents'])}")
+                    logger.info(f"  • Extract {suggestion['method_name']} → {suggestion['suggested_module']}.py")
+                    logger.info(f"    Affects: {', '.join(suggestion['affected_agents'])}")
         else:
-            print("[Orchestrator] ✓ No code duplication detected")
+            logger.info("[Orchestrator] ✓ No code duplication detected")
 
         # Validate individual agent code
         for agent_name, agent in self.agents.items():
@@ -492,14 +495,14 @@ class AgentOrchestrator:
             )
 
             if validation['violations']:
-                print(f"\n[Orchestrator] ⚠️  {agent_name} refactoring issues:")
+                logger.info(f"[Orchestrator] ⚠️  {agent_name} refactoring issues:")
                 for violation in validation['violations']:
-                    print(f"    - {violation}")
+                    logger.info(f"    - {violation}")
 
             if validation['suggestions']:
-                print(f"  💡 Suggestions:")
+                logger.info(f"  💡 Suggestions:")
                 for suggestion in validation['suggestions']:
-                    print(f"    - {suggestion}")
+                    logger.info(f"    - {suggestion}")
 
     def run(self) -> List[str]:
         """
@@ -517,14 +520,14 @@ class AgentOrchestrator:
         Returns:
             List of modified file paths
         """
-        print("\n" + "="*60)
-        print("AGENT ORCHESTRATION - BUILD MODE")
+        logger.info("\n" + "="*60)
+        logger.info("AGENT ORCHESTRATION - BUILD MODE")
         if self.user_intent:
-            print(f"User Intent: {self.user_intent}")
-        print(f"Safety: max_rounds={self.safety_config.max_negotiation_rounds}, ")
-        print(f"        max_proposals_per_agent={self.safety_config.max_proposals_per_agent}")
-        print(f"        arbiter_on_conflict={self.safety_config.require_arbiter_on_conflict}")
-        print("="*60)
+            logger.info(f"User Intent: {self.user_intent}")
+        logger.info(f"Safety: max_rounds={self.safety_config.max_negotiation_rounds}, ")
+        logger.info(f"        max_proposals_per_agent={self.safety_config.max_proposals_per_agent}")
+        logger.info(f"        arbiter_on_conflict={self.safety_config.require_arbiter_on_conflict}")
+        logger.info("="*60)
 
         # Stage 0: Git workflow setup (if enabled)
         if self.enable_git_workflow:
@@ -534,9 +537,9 @@ class AgentOrchestrator:
                 previous_session = self.session_manager.get_latest_session_with_pr(intent_keywords)
 
                 if previous_session:
-                    print(f"\n[Context] Found previous session: {previous_session.session_id}")
-                    print(f"  PR: {previous_session.pr_url}")
-                    print(f"  Retrieving developer feedback...")
+                    logger.info(f"\n[Context] Found previous session: {previous_session.session_id}")
+                    logger.info(f"  PR: {previous_session.pr_url}")
+                    logger.info(f"  Retrieving developer feedback...")
 
                     self.pr_feedback_context = self.session_manager.get_pr_feedback_context(
                         previous_session.session_id,
@@ -546,10 +549,10 @@ class AgentOrchestrator:
                     if self.pr_feedback_context and (self.pr_feedback_context.get("comments") or self.pr_feedback_context.get("review_comments")):
                         comment_count = len(self.pr_feedback_context.get("comments", []))
                         review_count = len(self.pr_feedback_context.get("review_comments", []))
-                        print(f"  ✓ Retrieved {comment_count} comments, {review_count} reviews")
-                        print(f"  Agents will use this feedback during analysis")
+                        logger.info(f"  ✓ Retrieved {comment_count} comments, {review_count} reviews")
+                        logger.info(f"  Agents will use this feedback during analysis")
                     else:
-                        print(f"  No feedback found on previous PR")
+                        logger.info(f"  No feedback found on previous PR")
                         self.pr_feedback_context = None
 
             # Create session if not provided
@@ -561,7 +564,7 @@ class AgentOrchestrator:
             original_branch = self.git_workflow.get_current_branch()
             success = self.git_workflow.create_branch(self.session.branch_name, from_branch=original_branch)
             if not success:
-                print(f"  ⚠️  Warning: Could not create git branch, continuing without git workflow")
+                logger.warning(f"⚠️  Warning: Could not create git branch, continuing without git workflow")
                 self.enable_git_workflow = False
 
         # Stage 1: Activate agents
@@ -577,9 +580,9 @@ class AgentOrchestrator:
         for round_num in range(self.safety_config.max_negotiation_rounds):
             self.negotiation_engine.current_round = round_num
 
-            print(f"\n{'='*60}")
-            print(f"NEGOTIATION ROUND {round_num + 1}/{self.safety_config.max_negotiation_rounds}")
-            print(f"{'='*60}")
+            logger.info(f"\n{'='*60}")
+            logger.info(f"NEGOTIATION ROUND {round_num + 1}/{self.safety_config.max_negotiation_rounds}")
+            logger.info(f"{'='*60}")
             self._broadcast_message("Orchestrator", f"Starting negotiation round {round_num + 1}/{self.safety_config.max_negotiation_rounds}", "info")
 
             # Proposals phase
@@ -590,10 +593,10 @@ class AgentOrchestrator:
 
             if new_proposals == 0:
                 self.negotiation_engine.rounds_without_proposals += 1
-                print(f"[Orchestrator] No new proposals in this round ({self.negotiation_engine.rounds_without_proposals}/{self.safety_config.convergence_threshold})")
+                logger.info(f"[Orchestrator] No new proposals in this round ({self.negotiation_engine.rounds_without_proposals}/{self.safety_config.convergence_threshold})")
 
                 if self.negotiation_engine.rounds_without_proposals >= self.safety_config.convergence_threshold:
-                    print(f"[Orchestrator] Convergence reached - stopping negotiation")
+                    logger.info(f"[Orchestrator] Convergence reached - stopping negotiation")
                     break
             else:
                 self.negotiation_engine.rounds_without_proposals = 0
@@ -638,19 +641,19 @@ class AgentOrchestrator:
                 # Run refactoring validation after changes
                 self.run_refactoring_validation_phase()
             else:
-                print("[Orchestrator] No commits to apply this round")
+                logger.info("[Orchestrator] No commits to apply this round")
 
             # Check if we've hit file modification limits
             if self.negotiation_engine.total_files_modified >= self.safety_config.max_total_file_changes:
-                print(f"[Orchestrator] Max file changes limit reached ({self.safety_config.max_total_file_changes}) - stopping")
+                logger.info(f"[Orchestrator] Max file changes limit reached ({self.safety_config.max_total_file_changes}) - stopping")
                 break
 
-        print("\n" + "="*60)
-        print(f"ORCHESTRATION COMPLETE")
-        print(f"  Total rounds: {self.negotiation_engine.current_round + 1}")
-        print(f"  Total commits: {len(all_commits)}")
-        print(f"  Files modified: {len(set(all_modified_files))}")
-        print("="*60)
+        logger.info("\n" + "="*60)
+        logger.info(f"ORCHESTRATION COMPLETE")
+        logger.info(f"  Total rounds: {self.negotiation_engine.current_round + 1}")
+        logger.info(f"  Total commits: {len(all_commits)}")
+        logger.info(f"  Files modified: {len(set(all_modified_files))}")
+        logger.info("="*60)
 
         # Stage 4: Create pull request (if git workflow enabled and changes were made)
         if self.enable_git_workflow and self.session and all_modified_files:
@@ -676,9 +679,9 @@ class AgentOrchestrator:
                         pr_url=pr_info['url'],
                         status="pr_created"
                     )
-                    print(f"\n✓ Pull request created: {pr_info['url']}")
-                    print(f"  Session ID: {self.session.session_id}")
-                    print(f"  Tracked in: .graphbus/negotiations/{self.session.session_id}/")
+                    logger.info(f"\n✓ Pull request created: {pr_info['url']}")
+                    logger.info(f"  Session ID: {self.session.session_id}")
+                    logger.info(f"  Tracked in: .graphbus/negotiations/{self.session.session_id}/")
 
         return list(set(all_modified_files))
 
@@ -746,7 +749,7 @@ def run_negotiation(
     Returns:
         Dict with negotiation results
     """
-    print(f"\n[Negotiation] Loading artifacts from {artifacts_dir}...")
+    logger.info(f"\n[Negotiation] Loading artifacts from {artifacts_dir}...")
 
     # Load artifacts
     try:
@@ -754,9 +757,9 @@ def run_negotiation(
     except Exception as e:
         raise ValueError(f"Failed to load artifacts: {e}")
 
-    print(f"[Negotiation] Loaded {len(artifacts.agents)} agents")
+    logger.info(f"[Negotiation] Loaded {len(artifacts.agents)} agents")
     for agent in artifacts.agents:
-        print(f"  - {agent.name}")
+        logger.info(f"  - {agent.name}")
 
     # Create LLM client
     llm_client = LLMClient(
@@ -775,10 +778,10 @@ def run_negotiation(
         enable_git_workflow=enable_git_workflow
     )
 
-    print(f"[Negotiation] Safety limits: max_file_changes={safety_config.max_total_file_changes}, max_rounds={safety_config.max_negotiation_rounds}")
-    print(f"[Negotiation] Counters initialized: files_modified=0, proposals=0")
+    logger.info(f"[Negotiation] Safety limits: max_file_changes={safety_config.max_total_file_changes}, max_rounds={safety_config.max_negotiation_rounds}")
+    logger.info(f"[Negotiation] Counters initialized: files_modified=0, proposals=0")
     if enable_git_workflow:
-        print(f"[Negotiation] Git workflow: enabled (branch + PR)")
+        logger.info(f"[Negotiation] Git workflow: enabled (branch + PR)")
 
     # Run orchestration
     modified_files = orchestrator.run()
@@ -832,7 +835,7 @@ def collect_agent_questions(
     Returns:
         List of question dicts formatted for AskUserQuestion tool
     """
-    print(f"\n[Questions] Asking agents for clarifying questions...")
+    logger.info(f"\n[Questions] Asking agents for clarifying questions...")
 
     # Load artifacts
     try:
