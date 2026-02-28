@@ -2,6 +2,7 @@
 Event Router - Routes events to node handlers in Runtime Mode
 """
 
+import logging
 from typing import Dict, List, Callable
 import inspect
 
@@ -9,6 +10,8 @@ from graphbus_core.model.message import Event
 from graphbus_core.model.topic import Subscription
 from graphbus_core.node_base import GraphBusNode
 from graphbus_core.runtime.message_bus import MessageBus
+
+logger = logging.getLogger(__name__)
 
 
 class EventRouter:
@@ -61,7 +64,7 @@ class EventRouter:
 
         # Get the node instance
         if node_name not in self.nodes:
-            print(f"[EventRouter] Warning: Node '{node_name}' not found, skipping subscription to {topic}")
+            logger.warning("Node '%s' not found, skipping subscription to %s", node_name, topic)
             return
 
         node = self.nodes[node_name]
@@ -69,11 +72,11 @@ class EventRouter:
         # Find the handler method
         handler_method = getattr(node, handler_name, None)
         if handler_method is None:
-            print(f"[EventRouter] Warning: Handler '{handler_name}' not found on {node_name}")
+            logger.warning("Handler '%s' not found on %s", handler_name, node_name)
             return
 
         if not callable(handler_method):
-            print(f"[EventRouter] Warning: Handler '{handler_name}' on {node_name} is not callable")
+            logger.warning("Handler '%s' on %s is not callable", handler_name, node_name)
             return
 
         # Cache the calling convention once — inspect.signature() is not free
@@ -94,7 +97,7 @@ class EventRouter:
         # Subscribe to message bus
         self.bus.subscribe(topic, event_handler, subscriber_name=node_name)
 
-        print(f"[EventRouter] Registered {node_name}.{handler_name}() for {topic}")
+        logger.debug("Registered %s.%s() for %s", node_name, handler_name, topic)
 
     def route_event_to_node(self, node: GraphBusNode, handler_name: str, event: Event) -> None:
         """
@@ -129,9 +132,7 @@ class EventRouter:
                 handler(event)
 
         except Exception as e:
-            print(f"[EventRouter] Error executing {node.name}.{handler_name}(): {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error executing %s.%s(): %s", node.name, handler_name, e, exc_info=True)
 
     def get_handlers_for_topic(self, topic: str) -> List[tuple[GraphBusNode, str]]:
         """
