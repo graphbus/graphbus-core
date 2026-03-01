@@ -4,11 +4,14 @@ Health Monitor
 Monitors agent health and handles failures with automatic recovery.
 """
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, Optional, Callable
 from enum import Enum
-import time
+from typing import Any, Callable, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class HealthStatus(Enum):
@@ -316,16 +319,26 @@ class HealthMonitor:
         self.recovery_callbacks.append(callback)
 
     def _update_status(self, node_name: str) -> None:
-        """Update health status based on metrics."""
+        """Update health status based on metrics.
+
+        Four-level escalation path:
+          HEALTHY   – no issues
+          DEGRADED  – elevated error rate but no run of consecutive failures
+          UNHEALTHY – one or more consecutive failures (can't service all requests)
+          FAILED    – consecutive failures ≥ failure_threshold (auto-restart eligible)
+        """
         metrics = self.metrics[node_name]
         old_status = metrics.status
 
         # Determine new status
         if metrics.consecutive_failures >= self.failure_threshold:
             new_status = HealthStatus.FAILED
-        elif metrics.error_rate > self.error_rate_threshold:
-            new_status = HealthStatus.DEGRADED
         elif metrics.consecutive_failures > 0:
+            # A run of back-to-back failures is worse than a high error rate
+            # spread over many calls — use UNHEALTHY (not DEGRADED) so that
+            # get_unhealthy_agents() correctly surfaces these nodes.
+            new_status = HealthStatus.UNHEALTHY
+        elif metrics.error_rate > self.error_rate_threshold:
             new_status = HealthStatus.DEGRADED
         else:
             new_status = HealthStatus.HEALTHY
@@ -347,12 +360,12 @@ class HealthMonitor:
             True if restart was successful
         """
         if not self.restart_policy.should_restart(node_name):
-            print(f"⚠ Agent '{node_name}' exceeded restart limit")
+            logger.warning("agent '%s' exceeded restart limit", node_name)
             return False
 
         # Calculate delay
         delay = self.restart_policy.get_restart_delay(node_name)
-        print(f"Waiting {delay:.1f}s before restarting '{node_name}'...")
+        logger.info("waiting %.1fs before restarting '%s'", delay, node_name)
         time.sleep(delay)
 
         try:
@@ -361,22 +374,22 @@ class HealthMonitor:
 
             # Try to restart by reloading the agent
             if hasattr(self.executor, 'hot_reload_manager'):
-                print(f"Attempting to restart '{node_name}'...")
+                logger.info("attempting to restart '%s'", node_name)
                 result = self.executor.hot_reload_manager.reload_agent(node_name)
 
                 if result.get("success"):
-                    print(f"✓ Successfully restarted '{node_name}'")
+                    logger.info("successfully restarted '%s'", node_name)
                     self.reset_metrics(node_name)
                     return True
                 else:
-                    print(f"✗ Failed to restart '{node_name}': {result.get('error')}")
+                    logger.error("failed to restart '%s': %s", node_name, result.get('error'))
                     return False
             else:
-                print(f"⚠ Hot reload not available, cannot restart '{node_name}'")
+                logger.warning("hot reload not available, cannot restart '%s'", node_name)
                 return False
 
         except Exception as e:
-            print(f"✗ Error restarting '{node_name}': {e}")
+            logger.error("error restarting '%s': %s", node_name, e, exc_info=True)
             return False
 
     def _trigger_failure_callbacks(self, node_name: str, metrics: HealthMetrics) -> None:

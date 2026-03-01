@@ -2,11 +2,14 @@
 Message Bus - Simple pub/sub routing for Runtime Mode
 """
 
+import logging
 from typing import Dict, List, Callable, Any
 from collections import defaultdict, deque
 
 from graphbus_core.model.message import Event, generate_id
 from graphbus_core.model.topic import Topic
+
+logger = logging.getLogger(__name__)
 
 
 class MessageBus:
@@ -51,7 +54,7 @@ class MessageBus:
             raise ValueError(f"Handler must be callable, got {type(handler)}")
 
         self._subscriptions[topic].append((handler, subscriber_name))
-        print(f"[MessageBus] {subscriber_name} subscribed to {topic}")
+        logger.debug("subscribed: %s -> %s", subscriber_name, topic)
 
     def unsubscribe(self, topic: str, handler: Callable) -> None:
         """
@@ -108,20 +111,20 @@ class MessageBus:
         handlers = self._subscriptions.get(topic, [])
 
         if not handlers:
-            print(f"[MessageBus] No subscribers for topic: {topic}")
+            logger.debug("no subscribers for topic: %s", topic)
             return
 
-        print(f"[MessageBus] Dispatching {topic} to {len(handlers)} subscriber(s)")
+        logger.debug("dispatching %s to %d subscriber(s)", topic, len(handlers))
 
         for handler, subscriber_name in handlers:
             try:
                 # Call handler synchronously
                 handler(event)
                 self._stats["messages_delivered"] += 1
-                print(f"[MessageBus] ✓ Delivered to {subscriber_name}")
+                logger.debug("delivered to %s", subscriber_name)
             except Exception as e:
                 self._stats["errors"] += 1
-                print(f"[MessageBus] ✗ Error in {subscriber_name}: {e}")
+                logger.error("error in handler %s for topic %s: %s", subscriber_name, topic, e, exc_info=True)
 
     def get_subscribers(self, topic: str) -> List[str]:
         """

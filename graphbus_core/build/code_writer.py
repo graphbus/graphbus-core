@@ -2,11 +2,14 @@
 Code writer - applies agent-agreed changes to source files
 """
 
+import logging
 import os
 from typing import List
 from graphbus_core.model.message import CommitRecord
 from graphbus_core.build.contract_validator import ContractValidator
 from graphbus_core.build.refactoring import RefactoringValidator
+
+logger = logging.getLogger(__name__)
 
 
 class CodeWriter:
@@ -45,15 +48,15 @@ class CodeWriter:
             List of modified file paths
         """
         if not commits:
-            print("[CodeWriter] No commits to apply")
+            logger.info("No commits to apply")
             return []
 
-        print(f"\n[CodeWriter] Applying {len(commits)} commits...")
+        logger.info("Applying %d commits...", len(commits))
 
         for commit in commits:
             self._apply_commit(commit)
 
-        print(f"[CodeWriter] Modified {len(self.modified_files)} files")
+        logger.info("Modified %d files", len(self.modified_files))
         return self.modified_files
 
     def _apply_commit(self, commit: CommitRecord) -> None:
@@ -65,11 +68,11 @@ class CodeWriter:
         """
         file_path = commit.resolution.get("file_path")
         if not file_path:
-            print(f"  Warning: Commit {commit.commit_id} has no file_path, skipping")
+            logger.warning("Commit %s has no file_path, skipping", commit.commit_id)
             return
 
         if not os.path.exists(file_path):
-            print(f"  Warning: File not found: {file_path}, skipping")
+            logger.warning("File not found: %s, skipping", file_path)
             return
 
         # Read current file content
@@ -77,7 +80,7 @@ class CodeWriter:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         except Exception as e:
-            print(f"  Error reading {file_path}: {e}")
+            logger.error("Error reading %s: %s", file_path, e)
             return
 
         # Apply the change
@@ -108,7 +111,7 @@ class CodeWriter:
                 removed_public = [m for m in removed_methods if not m.startswith('_')]
 
                 if removed_public:
-                    print(f"  ✗ REJECTED: Contract violation - public methods removed: {removed_public}")
+                    logger.warning("REJECTED commit %s: contract violation — public methods removed: %s", commit.commit_id, removed_public)
                     return
 
             except SyntaxError:
@@ -122,45 +125,37 @@ class CodeWriter:
             )
 
             if not refactoring_result['valid']:
-                print(f"  ✗ REJECTED: Refactoring validation failed")
-                print(f"    Reason: {refactoring_result.get('regressions', [])}")
+                logger.warning("REJECTED commit %s: refactoring validation failed — %s", commit.commit_id, refactoring_result.get('regressions', []))
                 return
 
             if refactoring_result.get('regressions'):
-                print(f"  ⚠️  Refactoring regressions detected:")
-                for regression in refactoring_result['regressions']:
-                    print(f"    - {regression}")
-                print(f"  ✗ REJECTED: Code quality would degrade")
+                logger.warning("REJECTED commit %s: code quality would degrade — regressions: %s", commit.commit_id, refactoring_result['regressions'])
                 return
 
             if refactoring_result.get('improvements'):
-                print(f"  ✓ Refactoring improvements:")
-                for improvement in refactoring_result['improvements']:
-                    print(f"    + {improvement}")
+                logger.info("Commit %s refactoring improvements: %s", commit.commit_id, refactoring_result['improvements'])
 
         if not old_code:
-            print(f"  Warning: Commit {commit.commit_id} has no old_code, skipping")
+            logger.warning("Commit %s has no old_code, skipping", commit.commit_id)
             return
 
         # Check if old code exists in file
         if old_code not in content:
-            print(f"  Warning: Old code not found in {file_path}")
-            print(f"  Looking for: {old_code[:100]}...")
+            logger.warning("Old code not found in %s (commit %s) — looking for: %.100s...", file_path, commit.commit_id, old_code)
             return
 
         # Replace old with new
         new_content = content.replace(old_code, new_code)
 
         if new_content == content:
-            print(f"  Warning: No changes made to {file_path}")
+            logger.warning("No changes made to %s after replacement (commit %s)", file_path, commit.commit_id)
             return
 
         # Write back (unless dry run)
         if self.dry_run:
-            print(f"  [DRY RUN] Would modify {file_path}")
-            print(f"    - Target: {commit.resolution.get('target')}")
-            print(f"    - Old: {old_code[:50]}...")
-            print(f"    - New: {new_code[:50]}...")
+            logger.info("[DRY RUN] Would modify %s (target: %s)", file_path, commit.resolution.get('target'))
+            logger.debug("  old: %.50s...", old_code)
+            logger.debug("  new: %.50s...", new_code)
         else:
             # Backup original
             backup_path = f"{file_path}.backup"
@@ -168,27 +163,26 @@ class CodeWriter:
                 with open(backup_path, 'w', encoding='utf-8') as f:
                     f.write(content)
             except Exception as e:
-                print(f"  Warning: Could not create backup: {e}")
+                logger.warning("Could not create backup for %s: %s", file_path, e)
 
             # Write new content
             try:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(new_content)
-                print(f"  ✓ Modified {file_path}")
-                print(f"    Backup saved to {backup_path}")
+                logger.info("Modified %s (backup: %s)", file_path, backup_path)
 
                 if file_path not in self.modified_files:
                     self.modified_files.append(file_path)
 
             except Exception as e:
-                print(f"  Error writing {file_path}: {e}")
+                logger.error("Error writing %s: %s", file_path, e)
                 # Restore from backup
                 if os.path.exists(backup_path):
                     with open(backup_path, 'r', encoding='utf-8') as f:
                         original = f.read()
                     with open(file_path, 'w', encoding='utf-8') as f:
                         f.write(original)
-                    print(f"  Restored from backup")
+                    logger.info("Restored %s from backup", file_path)
 
     def _extract_method_names(self, tree) -> set:
         """Extract all method names from an AST tree."""

@@ -3,11 +3,14 @@ Module and class discovery for Build Mode
 """
 
 import importlib
+import logging
 import pkgutil
 import inspect
 import os
 from typing import List, Tuple, Type
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def scan_modules(root_package: str) -> List[str]:
@@ -59,7 +62,7 @@ def discover_node_classes(modules: List[str]) -> List[Tuple[Type, str, str]]:
         try:
             module = importlib.import_module(module_name)
         except Exception as e:
-            print(f"Warning: Could not import module '{module_name}': {e}")
+            logger.warning("Could not import module '%s': %s", module_name, e)
             continue
 
         # Get source file path
@@ -95,7 +98,7 @@ def read_source_code(source_file: str) -> str:
         with open(source_file, 'r', encoding='utf-8') as f:
             return f.read()
     except Exception as e:
-        print(f"Warning: Could not read source file '{source_file}': {e}")
+        logger.warning("Could not read source file '%s': %s", source_file, e)
         return ""
 
 

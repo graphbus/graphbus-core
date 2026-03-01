@@ -118,6 +118,27 @@ class ArtifactLoader:
 
         return agents
 
+    def _load_topics_and_subscriptions(self) -> Tuple[List[Topic], List[Subscription]]:
+        """
+        Read topics.json once and return both topics and subscriptions.
+
+        This private helper exists so callers that need both (load_all,
+        validate_artifacts) can avoid reading and parsing the file twice —
+        the original load_topics() and load_subscriptions() each opened the
+        same file independently, meaning two disk reads per load_all() call.
+        """
+        topics_path = self.artifacts_dir / "topics.json"
+        with open(topics_path, 'r', encoding='utf-8') as f:
+            raw_data = json.load(f)
+
+        topics_data = TopicsData.from_dict(raw_data)
+        topics = [Topic(topic_name) for topic_name in topics_data.topics]
+        subscriptions = [
+            Subscription.from_dict(sub_data)
+            for sub_data in topics_data.subscriptions
+        ]
+        return topics, subscriptions
+
     def load_topics(self) -> List[Topic]:
         """
         Load topics from topics.json.
@@ -125,14 +146,7 @@ class ArtifactLoader:
         Returns:
             List of Topic objects
         """
-        topics_path = self.artifacts_dir / "topics.json"
-        with open(topics_path, 'r', encoding='utf-8') as f:
-            raw_data = json.load(f)
-
-        # Deserialize using dataclass
-        topics_data = TopicsData.from_dict(raw_data)
-
-        topics = [Topic(topic_name) for topic_name in topics_data.topics]
+        topics, _ = self._load_topics_and_subscriptions()
         return topics
 
     def load_subscriptions(self) -> List[Subscription]:
@@ -142,17 +156,7 @@ class ArtifactLoader:
         Returns:
             List of Subscription objects
         """
-        topics_path = self.artifacts_dir / "topics.json"
-        with open(topics_path, 'r', encoding='utf-8') as f:
-            raw_data = json.load(f)
-
-        # Deserialize using dataclass
-        topics_data = TopicsData.from_dict(raw_data)
-
-        subscriptions = [
-            Subscription.from_dict(sub_data)
-            for sub_data in topics_data.subscriptions
-        ]
+        _, subscriptions = self._load_topics_and_subscriptions()
         return subscriptions
 
     def load_all(self) -> Tuple[AgentGraph, List[AgentDefinition], List[Topic], List[Subscription]]:
@@ -164,8 +168,9 @@ class ArtifactLoader:
         """
         graph = self.load_graph()
         agents = self.load_agents()
-        topics = self.load_topics()
-        subscriptions = self.load_subscriptions()
+        # Single read of topics.json rather than two separate calls to
+        # load_topics() and load_subscriptions().
+        topics, subscriptions = self._load_topics_and_subscriptions()
 
         return graph, agents, topics, subscriptions
 
@@ -212,11 +217,10 @@ class ArtifactLoader:
         issues = []
 
         try:
-            # Check if all files load successfully
+            # Check if all files load successfully (single read of topics.json)
             graph = self.load_graph()
             agents = self.load_agents()
-            topics = self.load_topics()
-            subscriptions = self.load_subscriptions()
+            topics, subscriptions = self._load_topics_and_subscriptions()
 
             # Validate agent references in subscriptions
             agent_names = {agent.name for agent in agents}
