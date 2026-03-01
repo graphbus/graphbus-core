@@ -19,6 +19,7 @@ from graphbus_cli.websocket_server import (
 _server_thread: Optional[threading.Thread] = None
 _server_loop: Optional[asyncio.AbstractEventLoop] = None
 _server_started: bool = False
+_server_stop_event: Optional[threading.Event] = None
 
 
 def is_websocket_available() -> bool:
@@ -38,7 +39,7 @@ def start_websocket_server(port: int = 8765, wait_for_client: bool = False, time
     Returns:
         GraphBusWebSocketServer instance or None if websockets not available
     """
-    global _server_thread, _server_loop, _server_started
+    global _server_thread, _server_loop, _server_started, _server_stop_event
 
     if not WEBSOCKETS_AVAILABLE:
         return None
@@ -51,6 +52,8 @@ def start_websocket_server(port: int = 8765, wait_for_client: bool = False, time
     set_websocket_server(server)
 
     # Start server in background thread with its own event loop
+    _server_stop_event = threading.Event()
+
     def run_server():
         global _server_loop
         _server_loop = asyncio.new_event_loop()
@@ -58,9 +61,9 @@ def start_websocket_server(port: int = 8765, wait_for_client: bool = False, time
 
         async def start():
             await server.start()
-            # Keep server running
-            while True:
-                await asyncio.sleep(1)
+            # Keep server running until stop requested
+            while not _server_stop_event.is_set():
+                await asyncio.sleep(0.1)
 
         try:
             _server_loop.run_until_complete(start())
@@ -68,6 +71,7 @@ def start_websocket_server(port: int = 8765, wait_for_client: bool = False, time
             print(f"WebSocket server error: {e}")
         finally:
             _server_loop.close()
+            _server_loop = None
 
     _server_thread = threading.Thread(target=run_server, daemon=True)
     _server_thread.start()
@@ -90,18 +94,30 @@ def start_websocket_server(port: int = 8765, wait_for_client: bool = False, time
 
 def stop_websocket_server():
     """Stop the WebSocket server"""
-    global _server_started, _server_loop
+    global _server_started, _server_loop, _server_thread, _server_stop_event
 
     if not _server_started:
         return
 
     server = get_websocket_server()
 
+    if _server_stop_event:
+        _server_stop_event.set()
+
     if _server_loop and server:
-        # Schedule server stop in the server's event loop
-        asyncio.run_coroutine_threadsafe(server.stop(), _server_loop)
+        try:
+            # Schedule server stop in the server's event loop and wait for completion
+            future = asyncio.run_coroutine_threadsafe(server.stop(), _server_loop)
+            future.result(timeout=2.0)
+        except Exception:
+            pass
+
+    if _server_thread and _server_thread.is_alive():
+        _server_thread.join(timeout=2.0)
 
     _server_started = False
+    _server_thread = None
+    _server_stop_event = None
 
 
 def send_message_sync(message_type: str, data: Dict[str, Any]) -> bool:
