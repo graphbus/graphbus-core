@@ -34,7 +34,7 @@ class TestBuildCommandAgentOrchestration:
         assert result.exit_code == 0
         assert '--enable-agents' in result.output
         assert '--llm-model' in result.output
-        assert '--llm-api-key' in result.output
+        assert '--api-key' in result.output
         assert '--max-negotiation-rounds' in result.output
         assert '--max-proposals-per-agent' in result.output
         assert '--convergence-threshold' in result.output
@@ -84,7 +84,7 @@ class TestBuildCommandAgentOrchestration:
         assert 'API key required' in error_text or 'ANTHROPIC_API_KEY' in error_text or 'Build failed' in error_text
 
     def test_build_enable_agents_with_api_key_flag(self, runner, hello_world_agents, tmp_path):
-        """Test --enable-agents with --llm-api-key flag"""
+        """Test --enable-agents with --api-key flag"""
         output_dir = tmp_path / ".graphbus"
 
         result = runner.invoke(cli, [
@@ -92,7 +92,7 @@ class TestBuildCommandAgentOrchestration:
             hello_world_agents,
             '-o', str(output_dir),
             '--enable-agents',
-            '--llm-api-key', 'test-api-key-12345'
+            '--api-key', 'test-api-key-12345'
         ])
 
         # Should show agent orchestration is enabled
@@ -126,7 +126,7 @@ class TestBuildCommandAgentOrchestration:
             '-o', str(output_dir),
             '--enable-agents',
             '--llm-model', 'gpt-4-turbo',
-            '--llm-api-key', 'test-key'
+            '--api-key', 'test-key'
         ])
 
         if 'Agent orchestration: ENABLED' in result.output:
@@ -141,7 +141,7 @@ class TestBuildCommandAgentOrchestration:
             hello_world_agents,
             '-o', str(output_dir),
             '--enable-agents',
-            '--llm-api-key', 'test-key',
+            '--api-key', 'test-key',
             '--max-negotiation-rounds', '3',
             '--max-proposals-per-agent', '2',
             '--convergence-threshold', '1'
@@ -159,7 +159,7 @@ class TestBuildCommandAgentOrchestration:
             hello_world_agents,
             '-o', str(output_dir),
             '--enable-agents',
-            '--llm-api-key', 'test-key',
+            '--api-key', 'test-key',
             '--protected-files', 'agents/core.py',
             '--protected-files', 'agents/critical.py'
         ])
@@ -177,7 +177,7 @@ class TestBuildCommandAgentOrchestration:
             hello_world_agents,
             '-o', str(output_dir),
             '--enable-agents',
-            '--llm-api-key', 'test-key',
+            '--api-key', 'test-key',
             '--arbiter-agent', 'ArbiterService'
         ])
 
@@ -220,7 +220,7 @@ class TestNegotiateCommand:
         assert 'Run LLM agent negotiation' in result.output
         assert '--rounds' in result.output
         assert '--llm-model' in result.output
-        assert '--llm-api-key' in result.output
+        assert '--api-key' in result.output
         assert '--max-proposals-per-agent' in result.output
         assert '--convergence-threshold' in result.output
         assert '--protected-files' in result.output
@@ -273,7 +273,7 @@ class TestNegotiateCommand:
         result = runner.invoke(cli, [
             'negotiate',
             str(empty_dir),
-            '--llm-api-key', 'test-key'
+            '--api-key', 'test-key'
         ])
 
         assert result.exit_code != 0
@@ -295,11 +295,11 @@ class TestNegotiateCommand:
         assert result.exit_code != 0 or 'coming soon' in error_text.lower() or 'GraphBus Agent Negotiation' in error_text
 
     def test_negotiate_with_api_key_flag(self, runner, mock_artifacts_dir):
-        """Test negotiate with --llm-api-key flag"""
+        """Test negotiate with --api-key flag"""
         result = runner.invoke(cli, [
             'negotiate',
             str(mock_artifacts_dir),
-            '--llm-api-key', 'test-api-key-12345'
+            '--api-key', 'test-api-key-12345'
         ])
 
         # Should show negotiation info (even if not fully implemented)
@@ -321,7 +321,7 @@ class TestNegotiateCommand:
             'negotiate',
             str(mock_artifacts_dir),
             '--rounds', '3',
-            '--llm-api-key', 'test-key'
+            '--api-key', 'test-key'
         ])
 
         if 'Max rounds:' in result.output:
@@ -333,7 +333,7 @@ class TestNegotiateCommand:
             'negotiate',
             str(mock_artifacts_dir),
             '--llm-model', 'gpt-4-turbo',
-            '--llm-api-key', 'test-key'
+            '--api-key', 'test-key'
         ])
 
         if 'LLM model:' in result.output:
@@ -346,7 +346,7 @@ class TestNegotiateCommand:
             str(mock_artifacts_dir),
             '--protected-files', 'agents/core.py',
             '--protected-files', 'agents/utils.py',
-            '--llm-api-key', 'test-key'
+            '--api-key', 'test-key'
         ])
 
         # Should accept multiple protected files
@@ -358,7 +358,7 @@ class TestNegotiateCommand:
             'negotiate',
             str(mock_artifacts_dir),
             '--arbiter-agent', 'ArbiterAgent',
-            '--llm-api-key', 'test-key'
+            '--api-key', 'test-key'
         ])
 
         # Should accept arbiter specification
@@ -369,7 +369,7 @@ class TestNegotiateCommand:
         result = runner.invoke(cli, [
             'negotiate',
             str(mock_artifacts_dir),
-            '--llm-api-key', 'test-key',
+            '--api-key', 'test-key',
             '-v'
         ])
 

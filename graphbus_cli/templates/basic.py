@@ -28,10 +28,68 @@ class BasicTemplate(Template):
 
         # Create supporting files
         self._create_init_file(project_path)
+        self._create_run_script(project_path)
         self._create_readme(project_path, project_name)
         self._create_requirements(project_path)
         self._create_tests(project_path)
         self._create_gitignore(project_path)
+
+    def _create_run_script(self, project_path: Path) -> None:
+        """Create run.py demo entry point"""
+        content = '''"""
+Demo entry point — shows the 3-agent pipeline in action.
+
+Run with:  python run.py
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from graphbus_core.runtime.executor import RuntimeExecutor
+from graphbus_core.config import RuntimeConfig
+
+
+def main():
+    artifacts_dir = Path(__file__).parent / ".graphbus"
+    if not artifacts_dir.exists():
+        print("No build artifacts found. Run: graphbus build agents/")
+        sys.exit(1)
+
+    config = RuntimeConfig(artifacts_dir=str(artifacts_dir), enable_message_bus=True)
+    executor = RuntimeExecutor(config)
+    executor.start()
+
+    try:
+        hello = executor.get_node("HelloAgent")
+        processor = executor.get_node("ProcessorAgent")
+
+        print("=== GraphBus Demo Pipeline ===")
+        print()
+
+        # Generate a greeting (publishes to /greetings/generated → triggers processor + logger)
+        result = hello.generate_greeting("Alice")
+        print(f"[HelloAgent] Generated: {result['message']}")
+        print()
+
+        result2 = hello.generate_greeting("Bob")
+        print(f"[HelloAgent] Generated: {result2['message']}")
+        print()
+
+        stats = hello.get_stats()
+        print(f"[HelloAgent] Total greetings: {stats['total_greetings']}")
+
+    finally:
+        executor.stop()
+        print()
+        print("Done! Try graphbus run .graphbus --interactive for a live REPL.")
+
+
+if __name__ == "__main__":
+    main()
+'''
+        self._write_file(project_path / "run.py", content)
 
     def _create_hello_agent(self, project_path: Path) -> None:
         """Create HelloAgent"""
@@ -51,8 +109,8 @@ class HelloAgent(GraphBusNode):
     agents to improve greeting formats, add personalization, or enhance the user experience.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, bus=None, memory=None):
+        super().__init__(bus=bus, memory=memory)
         self.greeting_count = 0
 
     @schema_method(
@@ -93,8 +151,8 @@ class ProcessorAgent(GraphBusNode):
     processing algorithms, suggest new transformations, or optimize performance.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, bus=None, memory=None):
+        super().__init__(bus=bus, memory=memory)
         self.processed_count = 0
 
     @subscribe("/greetings/generated")
@@ -143,8 +201,8 @@ class LoggerAgent(GraphBusNode):
     monitoring systems.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, bus=None, memory=None):
+        super().__init__(bus=bus, memory=memory)
         self.log_count = 0
 
     @subscribe("/greetings/generated")
@@ -206,12 +264,16 @@ This project demonstrates basic GraphBus concepts with three agents:
    graphbus build agents/
    ```
 
-3. Run the runtime:
+3. Run the demo pipeline:
    ```bash
-   graphbus run .graphbus
+   python run.py
    ```
 
-4. In the interactive REPL, try:
+4. Or start the interactive REPL:
+   ```bash
+   graphbus run .graphbus --interactive
+   ```
+   Then try:
    ```
    call HelloAgent.generate_greeting {{"name": "Alice"}}
    call ProcessorAgent.process {{"message": "hello world"}}
@@ -289,10 +351,12 @@ def test_hello_agent_generates_greeting():
     from agents.hello_agent import HelloAgent
 
     agent = HelloAgent()
-    greeting = agent.generate_greeting("Alice")
+    result = agent.generate_greeting("Alice")
 
-    assert "Alice" in greeting
-    assert "Hello" in greeting
+    assert isinstance(result, dict)
+    assert "Alice" in result["message"]
+    assert "Hello" in result["message"]
+    assert result["count"] == 1
 
 
 def test_processor_agent_transforms_message():
@@ -302,7 +366,9 @@ def test_processor_agent_transforms_message():
     agent = ProcessorAgent()
     result = agent.process("hello world")
 
-    assert result == "HELLO WORLD"
+    # process() returns a dict with "result" key
+    assert isinstance(result, dict)
+    assert result["result"] == "HELLO WORLD"
 '''
         self._write_file(project_path / "tests" / "test_agents.py", content)
 

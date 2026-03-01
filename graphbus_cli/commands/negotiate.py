@@ -23,7 +23,7 @@ from graphbus_cli.utils.websocket import (
 
 
 @click.command()
-@click.argument('artifacts_dir', type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument('artifacts_dir', type=click.Path(exists=False, file_okay=False, dir_okay=True))
 @click.option(
     '--rounds',
     type=int,
@@ -34,13 +34,20 @@ from graphbus_cli.utils.websocket import (
     '--llm-model',
     type=str,
     default=DEFAULT_LLM_MODEL,
-    help=f'LLM model for agent orchestration (default: {DEFAULT_LLM_MODEL})'
+    help=f'LiteLLM model string for agent orchestration, e.g. deepseek/deepseek-reasoner, claude-3-5-sonnet-20241022, gpt-4o (default: {DEFAULT_LLM_MODEL})'
 )
 @click.option(
-    '--llm-api-key',
+    '--llm-base-url',
     type=str,
-    envvar='ANTHROPIC_API_KEY',
-    help='LLM API key (or set ANTHROPIC_API_KEY env var)'
+    envvar='GRAPHBUS_LLM_BASE_URL',
+    default=None,
+    help='Custom OpenAI-compatible API base URL (or set GRAPHBUS_LLM_BASE_URL)'
+)
+@click.option(
+    '--api-key',
+    type=str,
+    envvar='GRAPHBUS_API_KEY',
+    help='GraphBus API key (or set GRAPHBUS_API_KEY env var). Get yours at graphbus.com'
 )
 @click.option(
     '--max-proposals-per-agent',
@@ -81,6 +88,12 @@ from graphbus_cli.utils.websocket import (
     help='Disable git workflow (branch creation, PR)'
 )
 @click.option(
+    '--namespace', '-n',
+    type=str,
+    default=None,
+    help='Namespace to run negotiation in (default: active namespace from `graphbus ns current`)'
+)
+@click.option(
     '--project-root',
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     default='.',
@@ -90,7 +103,8 @@ def negotiate(
     artifacts_dir: str,
     rounds: int,
     llm_model: str,
-    llm_api_key: str,
+    llm_base_url: str,
+    api_key: str,
     max_proposals_per_agent: int,
     convergence_threshold: int,
     protected_files: tuple,
@@ -98,6 +112,7 @@ def negotiate(
     verbose: bool,
     intent: str,
     no_git: bool,
+    namespace: str,
     project_root: str
 ):
     """
@@ -124,6 +139,17 @@ def negotiate(
       graphbus negotiate .graphbus --llm-model gpt-4-turbo
       graphbus negotiate .graphbus --rounds 3 --max-proposals-per-agent 3
       graphbus negotiate .graphbus --protected-files agents/core.py
+      graphbus negotiate .graphbus --namespace backend-api --intent "reduce latency"
+      graphbus negotiate .graphbus -n production --intent "harden error handling"
+
+    \b
+    Namespace:
+      By default the active namespace (set via `graphbus ns use`) is used.
+      Override per-run with --namespace / -n.
+
+      graphbus ns create backend-api
+      graphbus ns use backend-api
+      graphbus negotiate .graphbus --intent "add retry logic"   # runs in backend-api
 
     \b
     How It Works:
@@ -185,6 +211,41 @@ def negotiate(
         - .graphbus/negotiations.json with session index
     """
     try:
+        # ── Auth check ──────────────────────────────────────────────────────
+        # negotiate is the only command that requires a GraphBus API key.
+        # init, build, and run work without any signup.
+        from graphbus_core.auth import ensure_api_key as _ensure_api_key
+        _ensure_api_key()
+
+        # ── Namespace resolution ──────────────────────────────────────────────
+        # If --namespace not provided, read the active context set by `graphbus ns use`.
+        if namespace is None:
+            try:
+                from graphbus_core.namespace import NamespaceRegistry
+                _reg = NamespaceRegistry(storage_dir=str(Path(project_root) / ".graphbus"))
+                namespace = _reg.get_current()
+            except Exception:
+                namespace = "default"
+
+        if verbose or intent:
+            from graphbus_cli.utils.output import print_info as _pi
+            _pi(f"Namespace: {namespace}")
+
+        # Validate artifacts_dir exists with a helpful message
+        _artifacts_path_check = Path(artifacts_dir)
+        if not _artifacts_path_check.exists():
+            raise BuildError(
+                f"Artifacts directory '{artifacts_dir}' does not exist.\n\n"
+                "  You need to build first:\n\n"
+                "    graphbus build agents/\n"
+                "    graphbus negotiate .graphbus\n\n"
+                "  Or if you haven't created a project yet:\n\n"
+                "    graphbus init my-project\n"
+                "    cd my-project\n"
+                "    graphbus build agents/\n"
+                "    graphbus negotiate .graphbus"
+            )
+
         # Start WebSocket server for UI communication (if available)
         websocket_server = None
         use_websocket = False
@@ -219,25 +280,36 @@ def negotiate(
 
         # Display negotiation info
         print_header("GraphBus Agent Negotiation")
-        print_info(f"Artifacts directory: {graphbus_dir}")
-        print_info(f"LLM model: {llm_model}")
-        print_info(f"Max rounds: {rounds}")
-        print_info(f"Max proposals per agent: {max_proposals_per_agent}")
+        print_info(f"Namespace:             {namespace}")
+        print_info(f"Artifacts directory:   {graphbus_dir}")
+        print_info(f"LLM model:             {llm_model}")
+        print_info(f"Max rounds:            {rounds}")
+        print_info(f"Max proposals/agent:   {max_proposals_per_agent}")
         if intent:
-            print_info(f"User intent: {intent}")
+            print_info(f"Intent:                {intent}")
         console.print()
 
         # Validate API key
-        if not llm_api_key:
+        if not api_key:
             raise BuildError(
-                "LLM API key required for agent negotiation. "
-                "Provide via --llm-api-key or ANTHROPIC_API_KEY environment variable."
+                "A GraphBus API key is required for agent negotiation.\n"
+                "  Get your key at https://graphbus.com\n"
+                "  Then set it: export GRAPHBUS_API_KEY=your_key_here\n"
+                "  Or pass it directly: --api-key your_key_here"
             )
 
+        import os
+        os.environ.setdefault("GRAPHBUS_API_KEY", api_key)
+
         # Create LLM config
+        # LLM API key: use env var or fall back to OPENAI_API_KEY
+        import os
+        llm_api_key = os.environ.get('GRAPHBUS_LLM_API_KEY') or os.environ.get('OPENAI_API_KEY')
+
         llm_config = LLMConfig(
             model=llm_model,
-            api_key=llm_api_key
+            base_url=llm_base_url,
+            api_key=llm_api_key,
         )
 
         # Create safety config
@@ -344,7 +416,8 @@ def negotiate(
             user_intent=enhanced_intent,  # Use enhanced intent with answers
             verbose=verbose,
             project_root=project_root,
-            enable_git_workflow=not no_git
+            enable_git_workflow=not no_git,
+            namespace=namespace,
         )
 
         _display_negotiation_summary(results)

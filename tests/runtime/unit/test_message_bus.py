@@ -176,8 +176,7 @@ class TestMessageBus:
 
     def test_message_history_limit(self):
         """Test message history respects max size"""
-        bus = MessageBus()
-        bus._max_history = 5
+        bus = MessageBus(max_history=5)
 
         # Publish more messages than max
         for i in range(10):

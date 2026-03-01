@@ -115,8 +115,97 @@ class TestErrorSuggestions:
         assert suggestion is not None
         assert "circular" in suggestion.lower() or "cycle" in suggestion.lower()
 
+    def test_suggest_fix_artifacts_not_found(self):
+        """Missing .graphbus artifacts directory triggers a build hint"""
+        exc = FileNotFoundError("No such file or directory: '.graphbus/graph.json'")
+        suggestion = suggest_fix(exc)
+
+        assert suggestion is not None
+        assert "build" in suggestion.lower()
+
+    def test_suggest_fix_api_key_missing(self):
+        """Test suggestion for missing/invalid API key errors"""
+        for msg in [
+            "ANTHROPIC_API_KEY not set",
+            "Invalid api_key provided",
+            "Authentication failed",
+            "401 Unauthorized",
+        ]:
+            exc = ValueError(msg)
+            suggestion = suggest_fix(exc)
+            assert suggestion is not None, f"Expected suggestion for: {msg}"
+            assert "api key" in suggestion.lower() or "anthropic_api_key" in suggestion.lower()
+
+    def test_suggest_fix_connection_refused(self):
+        """Test suggestion for connection refused errors"""
+        exc = ConnectionRefusedError("Connection refused on 127.0.0.1:6379")
+        suggestion = suggest_fix(exc)
+
+        assert suggestion is not None
+        assert "connection" in suggestion.lower()
+
+    def test_suggest_fix_timeout(self):
+        """Test suggestion for timeout errors"""
+        for msg in ["Request timed out", "Operation timeout exceeded"]:
+            exc = TimeoutError(msg)
+            suggestion = suggest_fix(exc)
+            assert suggestion is not None, f"Expected suggestion for: {msg}"
+            assert "timeout" in suggestion.lower() or "timed out" in suggestion.lower()
+
+    def test_suggest_fix_port_in_use(self):
+        """Test suggestion for port-already-in-use errors"""
+        exc = OSError("Address already in use: port 8765")
+        suggestion = suggest_fix(exc)
+
+        assert suggestion is not None
+        assert "port" in suggestion.lower()
+
+    def test_suggest_fix_type_error_arguments(self):
+        """Test suggestion for wrong-argument TypeError"""
+        exc = TypeError("process() missing 1 required argument: 'event'")
+        suggestion = suggest_fix(exc)
+
+        assert suggestion is not None
+        assert "argument" in suggestion.lower()
+
+    def test_suggest_fix_key_error(self):
+        """Test suggestion for KeyError (missing config/payload key)"""
+        exc = KeyError("order_id")
+        suggestion = suggest_fix(exc)
+
+        assert suggestion is not None
+        # Should mention schema or config
+        assert "key" in suggestion.lower() or "schema" in suggestion.lower() or "config" in suggestion.lower()
+
+    def test_suggest_fix_duplicate_agent(self):
+        """Test suggestion for duplicate agent name errors"""
+        exc = ValueError("Agent 'OrderProcessor' already registered")
+        suggestion = suggest_fix(exc)
+
+        assert suggestion is not None
+        assert "duplicate" in suggestion.lower() or "unique" in suggestion.lower()
+
+    def test_suggest_fix_schema_validation(self):
+        """Test suggestion for schema/contract validation errors"""
+        for msg in [
+            "Schema mismatch detected",
+            "Contract validation failed: breaking change",
+        ]:
+            exc = ValueError(msg)
+            suggestion = suggest_fix(exc)
+            assert suggestion is not None, f"Expected suggestion for: {msg}"
+            assert "schema" in suggestion.lower() or "contract" in suggestion.lower() or "validate" in suggestion.lower()
+
+    def test_suggest_fix_module_not_found_error(self):
+        """Test suggestion for ModuleNotFoundError (subclass of ImportError)"""
+        exc = ModuleNotFoundError("No module named 'redis'")
+        suggestion = suggest_fix(exc)
+
+        assert suggestion is not None
+        assert "install" in suggestion.lower() or "dependencies" in suggestion.lower()
+
     def test_suggest_fix_unknown_error(self):
-        """Test suggestion for unknown errors"""
+        """Test suggestion for unknown errors returns None"""
         exc = Exception("Unknown error")
         suggestion = suggest_fix(exc)
 

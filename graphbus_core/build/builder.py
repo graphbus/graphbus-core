@@ -156,10 +156,15 @@ def build_project(config: BuildConfig, enable_agents: bool = False) -> BuildArti
         if not hasattr(config, 'llm_config') or config.llm_config is None:
             print("Warning: enable_agents=True but no llm_config provided, skipping agent orchestration")
         else:
-            llm_client = LLMClient(
-                model=config.llm_config.model,
-                api_key=config.llm_config.api_key
-            )
+            # Allow a pre-built client to be injected (e.g. ClaudeCLIClient for OAuth)
+            if hasattr(config, '_cli_llm_client') and config._cli_llm_client is not None:
+                llm_client = config._cli_llm_client
+            else:
+                llm_client = LLMClient(
+                    model=config.llm_config.model,
+                    api_key=config.llm_config.api_key,
+                    base_url=config.llm_config.base_url
+                )
             orchestrator = AgentOrchestrator(
                 agent_definitions=agent_definitions,
                 agent_graph=agent_graph,

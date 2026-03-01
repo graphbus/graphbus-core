@@ -34,6 +34,7 @@ def cli(ctx):
     \b
     Development Tools:
       init      - Initialize new project from template
+      ingest    - Convert any existing codebase into GraphBus agents
       generate  - Generate agent boilerplate code
       profile   - Profile runtime performance
       dashboard - Launch web-based visualization dashboard
@@ -45,25 +46,37 @@ def cli(ctx):
       ci        - CI/CD pipeline generators
 
     \b
+    Namespaces:
+      ns create   - Create a namespace (logical isolation boundary)
+      ns use      - Switch the active namespace context
+      ns current  - Show the active namespace
+      ns list     - List all namespaces
+      ns show     - Detailed view + agent topology
+
+    \b
     Advanced Features:
       state                - Manage agent state persistence
-      negotiate            - Run LLM agent negotiation (EXPERIMENTAL)
-      inspect-negotiation  - View negotiation history (EXPERIMENTAL)
+      negotiate            - Improve your codebase through agent negotiation
+      inspect-negotiation  - View negotiation history
       --debug              - Enable interactive debugger (use with run)
       --watch              - Enable hot reload (use with run)
 
     \b
     Examples:
-      graphbus tui                          # Launch interactive UI
-      graphbus init my-project              # Create new project
-      graphbus generate agent OrderProcessor  # Generate agent code
-      graphbus build agents/                # Build agents from directory
-      graphbus build agents/ --enable-agents  # Build with agent orchestration
-      graphbus negotiate .graphbus          # Run post-build negotiation
-      graphbus inspect-negotiation .graphbus  # View negotiation history
-      graphbus run .graphbus --debug        # Run with debugger
-      graphbus profile .graphbus            # Profile performance
-      graphbus dashboard .graphbus          # Launch dashboard
+      graphbus tui                                     # Launch interactive UI
+      graphbus init my-project                         # Create new project
+      graphbus generate agent OrderProcessor           # Generate agent code
+      graphbus build agents/                           # Build agents
+      graphbus build agents/ --enable-agents           # Build with LLM orchestration
+      graphbus ns create backend-api                   # Create a namespace
+      graphbus ns use backend-api                      # Switch active namespace
+      graphbus ns current                              # Show active namespace
+      graphbus negotiate .graphbus --intent "add retry logic"
+      graphbus negotiate .graphbus -n backend-api --intent "reduce latency"
+      graphbus inspect-negotiation .graphbus           # View negotiation history
+      graphbus run .graphbus --debug                   # Run with debugger
+      graphbus profile .graphbus                       # Profile performance
+      graphbus dashboard .graphbus                     # Launch dashboard
 
     For more help on a specific command, use:
       graphbus COMMAND --help
@@ -91,6 +104,12 @@ from graphbus_cli.commands.contract import contract
 from graphbus_cli.commands.migrate import migrate
 from graphbus_cli.commands.coherence import coherence
 from graphbus_cli.commands.tui import tui
+from graphbus_cli.commands.session import session
+from graphbus_cli.commands.ns import ns
+from graphbus_cli.commands.auth import auth
+from graphbus_cli.commands.ui import ui
+from graphbus_cli.commands.ingest import ingest
+from graphbus_cli.commands.model import model
 
 cli.add_command(build)
 cli.add_command(run)
@@ -111,6 +130,12 @@ cli.add_command(contract)
 cli.add_command(migrate)
 cli.add_command(coherence)
 cli.add_command(tui)
+cli.add_command(session)
+cli.add_command(ns)
+cli.add_command(auth)
+cli.add_command(ui)
+cli.add_command(ingest)
+cli.add_command(model)
 
 
 def main():

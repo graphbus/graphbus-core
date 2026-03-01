@@ -23,7 +23,7 @@ class MessageBus:
     - Message history tracking
     """
 
-    def __init__(self):
+    def __init__(self, max_history: int = 1000):
         """Initialize message bus."""
         # topic_name -> list of (handler, subscriber_name)
         self._subscriptions: Dict[str, List[tuple[Callable, str]]] = defaultdict(list)
@@ -31,7 +31,7 @@ class MessageBus:
         # Message history for debugging/monitoring.
         # deque(maxlen=N) automatically evicts the oldest entry on append
         # when full — O(1) vs the O(n) list.pop(0) that a plain list requires.
-        self._max_history = 1000  # Keep last 1000 events
+        self._max_history = max_history  # Keep last 1000 events
         self._message_history: deque[Event] = deque(maxlen=self._max_history)
 
         # Statistics

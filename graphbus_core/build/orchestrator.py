@@ -50,7 +50,8 @@ class AgentOrchestrator:
         user_intent: str = None,
         project_root: str = ".",
         session: Optional[NegotiationSession] = None,
-        enable_git_workflow: bool = True
+        enable_git_workflow: bool = True,
+        namespace: str = "default",
     ):
         """
         Initialize orchestrator.
@@ -64,6 +65,7 @@ class AgentOrchestrator:
             project_root: Root directory of the project
             session: Optional pre-created negotiation session
             enable_git_workflow: Enable git branch/PR workflow
+            namespace: Logical namespace for this negotiation session
         """
         self.agent_definitions = {a.name: a for a in agent_definitions}
         self.agent_graph = agent_graph
@@ -72,6 +74,7 @@ class AgentOrchestrator:
         self.user_intent = user_intent
         self.project_root = project_root
         self.enable_git_workflow = enable_git_workflow
+        self.namespace = namespace
 
         self.agents: Dict[str, LLMAgent] = {}
         self.negotiation_engine = NegotiationEngine(safety_config=self.safety_config, user_intent=user_intent)
@@ -79,8 +82,9 @@ class AgentOrchestrator:
         self.refactoring_validator = RefactoringValidator()
         self.contract_validator = ContractValidator()
 
-        # Git workflow integration
-        self.session_manager = NegotiationSessionManager(project_root=project_root)
+        # Git workflow integration — use from_env() so GRAPHBUS_NEGOTIATIONS_URL
+        # and GRAPHBUS_API_KEY are picked up automatically for remote dual-write
+        self.session_manager = NegotiationSessionManager.from_env(project_root=project_root)
         self.git_workflow = GitWorkflowManager(project_root=project_root)
         self.session = session
         self.pr_feedback_context = None  # Will be populated if previous PR found
@@ -725,7 +729,8 @@ def run_negotiation(
     user_intent: str = None,
     verbose: bool = False,
     project_root: str = ".",
-    enable_git_workflow: bool = True
+    enable_git_workflow: bool = True,
+    namespace: str = "default",
 ) -> dict:
     """
     Run negotiation on existing build artifacts.
@@ -764,7 +769,8 @@ def run_negotiation(
     # Create LLM client
     llm_client = LLMClient(
         model=llm_config.model,
-        api_key=llm_config.api_key
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url
     )
 
     # Create orchestrator (fresh instance with counters at 0)
@@ -775,7 +781,8 @@ def run_negotiation(
         safety_config=safety_config,
         user_intent=user_intent,
         project_root=project_root,
-        enable_git_workflow=enable_git_workflow
+        enable_git_workflow=enable_git_workflow,
+        namespace=namespace,
     )
 
     logger.info(f"[Negotiation] Safety limits: max_file_changes={safety_config.max_total_file_changes}, max_rounds={safety_config.max_negotiation_rounds}")
@@ -793,6 +800,7 @@ def run_negotiation(
 
     # Return results
     result = {
+        "namespace": namespace,
         "rounds_completed": orchestrator.negotiation_engine.current_round + 1,
         "total_proposals": len(orchestrator.negotiation_engine.proposals),
         "accepted_proposals": len(artifacts.negotiations),
@@ -846,7 +854,8 @@ def collect_agent_questions(
     # Create LLM client
     llm_client = LLMClient(
         model=llm_config.model,
-        api_key=llm_config.api_key
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url
     )
 
     # Create lightweight orchestrator just for analysis

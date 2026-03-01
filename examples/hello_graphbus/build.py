@@ -15,7 +15,7 @@ from graphbus_core.build.builder import build_project
 def main():
     """Run the build process for Hello GraphBus."""
     # Get API key from environment
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    api_key = os.environ.get('GRAPHBUS_API_KEY')
 
     config = BuildConfig(
         root_package="examples.hello_graphbus.agents",
@@ -34,7 +34,7 @@ def main():
         if enable_agents:
             print("Agent mode enabled - agents will propose code improvements")
         else:
-            print("Agent mode disabled - set ANTHROPIC_API_KEY to enable")
+            print("Agent mode disabled - set GRAPHBUS_API_KEY to enable (get yours at graphbus.com)")
 
         artifacts = build_project(config, enable_agents=enable_agents)
         print("\nBuild successful!")

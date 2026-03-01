@@ -28,5 +28,9 @@ You should:
 
     IS_ARBITER = True  # Mark this as an arbiter agent
 
-    def __init__(self, bus=None, memory=None):
+    def __init__(self, name, bus=None, memory=None):
+        if not isinstance(name, str):
+            raise ValueError(f"name must be a string, got {type(name).__name__}")
+        if not name.strip():
+            raise ValueError("name must be a non-empty, non-whitespace string")
         super().__init__(bus, memory)

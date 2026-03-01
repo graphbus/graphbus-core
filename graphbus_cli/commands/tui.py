@@ -72,3 +72,11 @@ def tui(theme):
     except Exception as e:
         click.echo(f"❌ Error running TUI: {str(e)}", err=True)
         sys.exit(1)
+
+def register(parser):
+    """Register TUI command with CLI parser."""
+    tui_parser = parser.add_parser('tui', help='Launch GraphBus TUI')
+    tui_parser.add_argument('path', nargs='?', default='.', help='Project path')
+    tui_parser.add_argument('--graphbus-dir', default='~/.graphbus', help='GraphBus home directory')
+    tui_parser.set_defaults(func=main)
+    return tui_parser

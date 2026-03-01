@@ -24,7 +24,7 @@ from graphbus_cli.utils.websocket import (
 
 
 @click.command()
-@click.argument('agents_dir', type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument('agents_dir', type=click.Path(exists=False, file_okay=False, dir_okay=True))
 @click.option(
     '--output-dir', '-o',
     default='.graphbus',
@@ -50,13 +50,13 @@ from graphbus_cli.utils.websocket import (
     '--llm-model',
     type=str,
     default=DEFAULT_LLM_MODEL,
-    help=f'LLM model for agent orchestration (default: {DEFAULT_LLM_MODEL})'
+    help=f'LiteLLM model string for agent orchestration, e.g. deepseek/deepseek-reasoner, claude-3-5-sonnet-20241022, gpt-4o (default: {DEFAULT_LLM_MODEL})'
 )
 @click.option(
-    '--llm-api-key',
+    '--api-key',
     type=str,
-    envvar='ANTHROPIC_API_KEY',
-    help='LLM API key (or set ANTHROPIC_API_KEY env var)'
+    envvar='GRAPHBUS_API_KEY',
+    help='GraphBus API key (or set GRAPHBUS_API_KEY env var). Get yours at graphbus.com'
 )
 @click.option(
     '--max-negotiation-rounds',
@@ -99,7 +99,7 @@ def build(
     verbose: bool,
     enable_agents: bool,
     llm_model: str,
-    llm_api_key: str,
+    api_key: str,
     max_negotiation_rounds: int,
     max_proposals_per_agent: int,
     convergence_threshold: int,
@@ -164,6 +164,21 @@ def build(
         - Suggests modifications for alignment
     """
     try:
+        # Validate agents_dir exists with a helpful message
+        _agents_path_check = Path(agents_dir)
+        if not _agents_path_check.exists():
+            raise BuildError(
+                f"Directory '{agents_dir}' does not exist.\n\n"
+                "  To scaffold a new project first:\n\n"
+                "    graphbus init my-project\n"
+                "    cd my-project\n"
+                "    graphbus build agents/\n\n"
+                "  Or use an existing agents directory:\n\n"
+                "    graphbus build path/to/my/agents/"
+            )
+        if not _agents_path_check.is_dir():
+            raise BuildError(f"'{agents_dir}' is not a directory.")
+
         # Start WebSocket server if agent orchestration is enabled
         websocket_server = None
         if enable_agents and is_websocket_available():
@@ -205,14 +220,17 @@ def build(
         # Create LLM config if agent orchestration is enabled
         llm_config = None
         if enable_agents:
-            if not llm_api_key:
+            if not api_key:
                 raise BuildError(
-                    "LLM API key required when --enable-agents is set. "
-                    "Provide via --llm-api-key or ANTHROPIC_API_KEY environment variable."
+                    "A GraphBus API key is required when --enable-agents is set.\n"
+                    "  Get your key at https://graphbus.com\n"
+                    "  Then set it: export GRAPHBUS_API_KEY=your_key_here\n"
+                    "  Or pass it directly: --api-key your_key_here"
                 )
+            import os
+            os.environ.setdefault("GRAPHBUS_API_KEY", api_key)
             llm_config = LLMConfig(
                 model=llm_model,
-                api_key=llm_api_key
             )
 
         # Create safety config if agent orchestration is enabled

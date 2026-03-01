@@ -273,19 +273,39 @@ class RuntimeExecutor:
             ValueError: If node or method not found
         """
         if not self._is_running:
-            raise RuntimeError("Runtime executor not started")
+            raise RuntimeError(
+                "Runtime executor not started. Call executor.start() before invoking methods."
+            )
 
         if node_name not in self.nodes:
-            raise ValueError(f"Node '{node_name}' not found")
+            available = sorted(self.nodes.keys())
+            hint = (
+                f"Available nodes: {available}"
+                if available
+                else "No nodes are currently loaded."
+            )
+            raise ValueError(
+                f"Node '{node_name}' not found. {hint}"
+            )
 
         node = self.nodes[node_name]
         method = getattr(node, method_name, None)
 
         if method is None:
-            raise ValueError(f"Method '{method_name}' not found on node '{node_name}'")
+            schema_methods = list(node.get_schema_methods().keys())
+            hint = (
+                f"Schema methods on '{node_name}': {sorted(schema_methods)}"
+                if schema_methods
+                else f"'{node_name}' has no @schema_method decorated methods."
+            )
+            raise ValueError(
+                f"Method '{method_name}' not found on node '{node_name}'. {hint}"
+            )
 
         if not callable(method):
-            raise ValueError(f"'{method_name}' on '{node_name}' is not callable")
+            raise ValueError(
+                f"'{method_name}' on '{node_name}' is an attribute, not a callable method."
+            )
 
         # Debugger hook before method call
         if self.debugger and self.debugger.enabled:
@@ -328,10 +348,15 @@ class RuntimeExecutor:
             RuntimeError: If message bus not enabled
         """
         if not self._is_running:
-            raise RuntimeError("Runtime executor not started")
+            raise RuntimeError(
+                "Runtime executor not started. Call executor.start() before publishing events."
+            )
 
         if self.bus is None:
-            raise RuntimeError("Message bus not enabled")
+            raise RuntimeError(
+                "Message bus not enabled. "
+                "Pass enable_message_bus=True to RuntimeConfig (the default) to use pub/sub."
+            )
 
         # Log event for dashboard
         self._log_event(topic, payload, source)
@@ -352,7 +377,13 @@ class RuntimeExecutor:
             ValueError: If node not found
         """
         if node_name not in self.nodes:
-            raise ValueError(f"Node '{node_name}' not found")
+            available = sorted(self.nodes.keys())
+            hint = (
+                f"Available nodes: {available}"
+                if available
+                else "No nodes are currently loaded."
+            )
+            raise ValueError(f"Node '{node_name}' not found. {hint}")
 
         return self.nodes[node_name]
 
@@ -478,17 +509,29 @@ class RuntimeExecutor:
             ValueError: If state management is not enabled or node doesn't exist
         """
         if not self.state_manager:
-            raise ValueError("State management is not enabled")
+            raise ValueError(
+                "State management is not enabled. "
+                "Call executor.start(enable_state_persistence=True) to enable it."
+            )
 
         if node_name not in self.nodes:
-            raise ValueError(f"Node '{node_name}' not found")
+            available = sorted(self.nodes.keys())
+            hint = (
+                f"Available nodes: {available}"
+                if available
+                else "No nodes are currently loaded."
+            )
+            raise ValueError(f"Node '{node_name}' not found. {hint}")
 
         node = self.nodes[node_name]
         if hasattr(node, 'get_state'):
             state = node.get_state()
             self.state_manager.save_state(node_name, state)
         else:
-            raise ValueError(f"Node '{node_name}' does not support state persistence")
+            raise ValueError(
+                f"Node '{node_name}' does not support state persistence. "
+                "Implement get_state() and set_state() on the node class to enable this feature."
+            )
 
     def save_all_states(self) -> int:
         """
@@ -501,7 +544,10 @@ class RuntimeExecutor:
             ValueError: If state management is not enabled
         """
         if not self.state_manager:
-            raise ValueError("State management is not enabled")
+            raise ValueError(
+                "State management is not enabled. "
+                "Call executor.start(enable_state_persistence=True) to enable it."
+            )
 
         count = 0
         for node_name, node in self.nodes.items():
