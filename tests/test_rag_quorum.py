@@ -327,6 +327,138 @@ class TestCgrBackend:
         assert summary["total_nodes"] >= 0
 
 
+class TestCgrDecodeProtobuf:
+    """Tests for CgrBackend._decode_protobuf_to_json — requires codec.schema_pb2."""
+
+    TYPER_INDEX = Path("/tmp/cgr-test/typer-index/index.bin")
+
+    @pytest.fixture(autouse=True)
+    def _skip_without_codec(self):
+        try:
+            from graphbus_core.rag.code_graph import CgrBackend
+            CgrBackend._import_codec()
+        except (ImportError, Exception):
+            pytest.skip("codec.schema_pb2 not available")
+
+    def test_decode_produces_valid_json(self, tmp_path):
+        """Decoding the typer index.bin produces valid graph JSON."""
+        if not self.TYPER_INDEX.exists():
+            pytest.skip(f"{self.TYPER_INDEX} not present")
+
+        from graphbus_core.rag.code_graph import CgrBackend
+
+        out = str(tmp_path / "graph.json")
+        CgrBackend._decode_protobuf_to_json(str(self.TYPER_INDEX), out)
+
+        with open(out) as f:
+            data = json.load(f)
+
+        assert "nodes" in data
+        assert "relationships" in data
+        assert "metadata" in data
+        assert data["metadata"]["total_nodes"] == len(data["nodes"])
+        assert data["metadata"]["total_relationships"] == len(data["relationships"])
+
+    def test_decode_node_format(self, tmp_path):
+        """Each decoded node has node_id, labels, and properties."""
+        if not self.TYPER_INDEX.exists():
+            pytest.skip(f"{self.TYPER_INDEX} not present")
+
+        from graphbus_core.rag.code_graph import CgrBackend
+
+        out = str(tmp_path / "graph.json")
+        CgrBackend._decode_protobuf_to_json(str(self.TYPER_INDEX), out)
+
+        with open(out) as f:
+            data = json.load(f)
+
+        assert len(data["nodes"]) > 0
+        node = data["nodes"][0]
+        assert "node_id" in node
+        assert "labels" in node
+        assert isinstance(node["labels"], list)
+        assert "properties" in node
+
+    def test_decode_relationship_format(self, tmp_path):
+        """Each decoded relationship has from_id, to_id, type, properties."""
+        if not self.TYPER_INDEX.exists():
+            pytest.skip(f"{self.TYPER_INDEX} not present")
+
+        from graphbus_core.rag.code_graph import CgrBackend
+
+        out = str(tmp_path / "graph.json")
+        CgrBackend._decode_protobuf_to_json(str(self.TYPER_INDEX), out)
+
+        with open(out) as f:
+            data = json.load(f)
+
+        assert len(data["relationships"]) > 0
+        rel = data["relationships"][0]
+        assert "from_id" in rel
+        assert "to_id" in rel
+        assert "type" in rel
+        assert "properties" in rel
+
+    def test_decode_matches_reference(self, tmp_path):
+        """Decoded JSON should have matching node count and close rel count."""
+        if not self.TYPER_INDEX.exists():
+            pytest.skip(f"{self.TYPER_INDEX} not present")
+
+        ref_json = self.TYPER_INDEX.parent / "graph.json"
+        if not ref_json.exists():
+            pytest.skip("reference graph.json not present")
+
+        from graphbus_core.rag.code_graph import CgrBackend
+
+        out = str(tmp_path / "graph.json")
+        CgrBackend._decode_protobuf_to_json(str(self.TYPER_INDEX), out)
+
+        with open(out) as f:
+            decoded = json.load(f)
+        with open(ref_json) as f:
+            reference = json.load(f)
+
+        # Node count must match exactly
+        assert len(decoded["nodes"]) == len(reference["nodes"])
+        # Relationship count may differ slightly: the reference was exported
+        # from Memgraph which resolves external/internal symbols that the
+        # protobuf index doesn't include as explicit nodes.
+        ref_rels = len(reference["relationships"])
+        dec_rels = len(decoded["relationships"])
+        assert dec_rels >= ref_rels * 0.95, (
+            f"Decoded {dec_rels} rels, expected at least 95% of {ref_rels}"
+        )
+
+    def test_mirror_produces_nodes_from_loaded_graph(self, tmp_path):
+        """_mirror_to_graphbus_graph populates non-empty node set."""
+        if not self.TYPER_INDEX.exists():
+            pytest.skip(f"{self.TYPER_INDEX} not present")
+
+        pytest.importorskip("cgr")
+        import cgr as cgr_mod
+        from graphbus_core.rag.code_graph import CgrBackend
+
+        # Decode then load
+        out = str(tmp_path / "graph.json")
+        CgrBackend._decode_protobuf_to_json(str(self.TYPER_INDEX), out)
+
+        backend = CgrBackend.__new__(CgrBackend)
+        backend._index_dir = str(tmp_path)
+        backend._mode = "offline"
+        backend._cgr_graph = cgr_mod.load_graph(out)
+        from graphbus_core.model.graph import GraphBusGraph
+        backend._gbg = GraphBusGraph()
+        backend._mirror_to_graphbus_graph()
+
+        assert len(backend._gbg) > 0
+        # Should have file, function, class, or method nodes
+        node_types = {
+            d.get("node_type")
+            for _, d in backend._gbg.graph.nodes(data=True)
+        }
+        assert node_types & {"file", "function", "class", "method", "module"}
+
+
 # ---------------------------------------------------------------------------
 # Auto-selection / fallback
 # ---------------------------------------------------------------------------

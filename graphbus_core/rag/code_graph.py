@@ -290,7 +290,12 @@ class CgrBackend(CodeGraphBackend):
             props: dict = {}
             for fd in payload.DESCRIPTOR.fields:
                 val = getattr(payload, fd.name)
-                if fd.label == fd.LABEL_REPEATED:
+                repeated = getattr(fd, "is_repeated", None)
+                if callable(repeated):
+                    repeated = repeated()
+                elif repeated is None:
+                    repeated = fd.label == fd.LABEL_REPEATED
+                if repeated:
                     val = list(val)
                 if val:  # skip proto3 defaults (0, False, "", [])
                     props[fd.name] = val
@@ -301,12 +306,27 @@ class CgrBackend(CodeGraphBackend):
                 "properties": props,
             })
 
-            # Build node_id_map using primary key
+            # Build node_id_map: primary key first, then secondary string
+            # fields (some relationships reference nodes by path or name
+            # rather than qualified_name).
             pk_field = _PRIMARY_KEY_FIELD.get(payload_name)
             if pk_field:
                 pk_value = getattr(payload, pk_field, "")
                 if pk_value:
                     node_id_map[pk_value] = i
+            for fd in payload.DESCRIPTOR.fields:
+                if fd.type != fd.TYPE_STRING:
+                    continue
+                _rpt = getattr(fd, "is_repeated", None)
+                if callable(_rpt):
+                    _rpt = _rpt()
+                elif _rpt is None:
+                    _rpt = fd.label == fd.LABEL_REPEATED
+                if _rpt:
+                    continue
+                val = getattr(payload, fd.name)
+                if val and val not in node_id_map:
+                    node_id_map[val] = i
 
         # -- relationships ---------------------------------------------------
         rel_type_desc = schema_pb2.Relationship.RelationshipType.DESCRIPTOR
