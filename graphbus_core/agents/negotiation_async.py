@@ -6,10 +6,14 @@ instead of sequentially, then collates results for consensus.
 """
 
 import asyncio
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, TYPE_CHECKING
 from graphbus_core.model.message import Proposal, ProposalEvaluation, CommitRecord
 from graphbus_core.agents.agent import LLMAgent
 from graphbus_core.config import SafetyConfig
+
+if TYPE_CHECKING:
+    from graphbus_core.rag.code_graph import CodeGraph
+    from graphbus_core.rag.quorum import QuorumResolver
 
 
 class AsyncNegotiationEngine:
@@ -24,16 +28,26 @@ class AsyncNegotiationEngine:
     This dramatically speeds up negotiation rounds.
     """
 
-    def __init__(self, safety_config: Optional[SafetyConfig] = None, user_intent: Optional[str] = None):
+    def __init__(
+        self,
+        safety_config: Optional[SafetyConfig] = None,
+        user_intent: Optional[str] = None,
+        code_graph: Optional["CodeGraph"] = None,
+        quorum_resolver: Optional["QuorumResolver"] = None,
+    ):
         """
         Initialize async negotiation engine.
 
         Args:
             safety_config: Safety configuration with limits and guardrails
             user_intent: User's goal or intent for the negotiation
+            code_graph: Optional CodeGraph for code-aware quorum resolution
+            quorum_resolver: Optional QuorumResolver for filtering evaluators
         """
         self.safety_config = safety_config or SafetyConfig()
         self.user_intent = user_intent
+        self.code_graph = code_graph
+        self.quorum_resolver = quorum_resolver
         self.proposals: Dict[str, Proposal] = {}
         self.evaluations: Dict[str, List[ProposalEvaluation]] = {}
         self.commits: List[CommitRecord] = []
@@ -252,6 +266,14 @@ class AsyncNegotiationEngine:
             evaluations = self.evaluations.get(proposal_id, [])
             if not evaluations:
                 continue
+
+            # If quorum resolver is set, filter evaluations to quorum members
+            if self.quorum_resolver:
+                quorum_agents = self.quorum_resolver.resolve(proposal)
+                self._log(f"  [Quorum] Resolved quorum for {proposal_id}: {sorted(quorum_agents)}")
+                evaluations = [e for e in evaluations if e.evaluator in quorum_agents]
+                if not evaluations:
+                    continue
 
             # Count votes
             accepts = sum(1 for e in evaluations if e.decision == "accept")
