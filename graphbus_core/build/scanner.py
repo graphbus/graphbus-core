@@ -7,6 +7,7 @@ import logging
 import pkgutil
 import inspect
 import os
+import re
 from typing import List, Tuple, Type
 from pathlib import Path
 
@@ -111,22 +112,36 @@ def extract_class_source(source_code: str, class_name: str) -> str:
         class_name: Name of the class to extract
 
     Returns:
-        Source code of just that class
+        Source code of just that class, or the full source_code as fallback.
     """
-    # Simple implementation: find the class definition and extract until next class or EOF
+    # Build a pattern that matches `class ClassName(` or `class ClassName:`
+    # with optional whitespace, anchored at a word boundary.
+    #
+    # The previous check was `line.strip().startswith(f'class {class_name}')`,
+    # which is a prefix match.  In a file that contains both `class Hello` and
+    # `class HelloAgent`, searching for `Hello` would match `HelloAgent` first,
+    # causing the wrong class body to be sent to the LLM for analysis.
+    # A regex word-boundary on the class name prevents that false positive.
+    class_header = re.compile(
+        r'^(\s*)class\s+' + re.escape(class_name) + r'\s*[:(]'
+    )
+
     lines = source_code.split('\n')
     class_lines = []
     in_class = False
     indent_level = 0
 
     for line in lines:
-        if line.strip().startswith(f'class {class_name}'):
-            in_class = True
-            indent_level = len(line) - len(line.lstrip())
-            class_lines.append(line)
-        elif in_class:
+        if not in_class:
+            m = class_header.match(line)
+            if m:
+                in_class = True
+                indent_level = len(m.group(1))  # leading whitespace of `class` keyword
+                class_lines.append(line)
+        else:
             current_indent = len(line) - len(line.lstrip())
-            # If we hit a line with same or less indentation and it's not empty, we've left the class
+            # An unindented (or equally indented) non-blank line marks the end
+            # of the class body — stop here, do NOT include the new definition.
             if line.strip() and current_indent <= indent_level:
                 break
             class_lines.append(line)
