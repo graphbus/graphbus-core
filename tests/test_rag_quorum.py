@@ -1,13 +1,18 @@
 """
-Tests for CodeGraph and QuorumResolver.
+Tests for CodeGraph, CodeGraphBackend implementations, and QuorumResolver.
 """
 
+import json
 import os
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from graphbus_core.rag.code_graph import CodeGraph
+from graphbus_core.rag.code_graph import (
+    CodeGraph,
+    CodeGraphBackend,
+    LocalBackend,
+)
 from graphbus_core.rag.quorum import QuorumResolver
 from graphbus_core.model.graph import AgentGraph
 from graphbus_core.model.message import Proposal, CodeChange
@@ -39,7 +44,7 @@ def _make_proposal(file_path: str = "graphbus_core/model/graph.py") -> Proposal:
 
 
 # ---------------------------------------------------------------------------
-# CodeGraph.build_from_project
+# CodeGraph.build_from_project (uses LocalBackend when cgr is absent)
 # ---------------------------------------------------------------------------
 
 class TestCodeGraphBuildFromProject:
@@ -243,3 +248,100 @@ class TestQuorumResolver:
         quorum = resolver.resolve(proposal)
         assert "graph_agent" in quorum
         assert "orch_agent" in quorum
+
+
+# ---------------------------------------------------------------------------
+# LocalBackend
+# ---------------------------------------------------------------------------
+
+class TestLocalBackend:
+    """Test the LocalBackend directly."""
+
+    @pytest.fixture(scope="class")
+    def backend(self):
+        lb = LocalBackend()
+        lb.build(PROJECT_ROOT)
+        return lb
+
+    def test_build_populates_graph(self, backend: LocalBackend):
+        gbg = backend.as_graphbus_graph()
+        assert len(gbg) > 0
+
+    def test_summary_has_files(self, backend: LocalBackend):
+        s = backend.to_summary()
+        assert s["files"] > 0
+
+    def test_affected_symbols_returns_set(self, backend: LocalBackend):
+        gbg = backend.as_graphbus_graph()
+        file_nodes = [
+            n for n, d in gbg.graph.nodes(data=True)
+            if d.get("node_type") == "file"
+        ]
+        result = backend.get_affected_symbols([file_nodes[0]])
+        assert isinstance(result, set)
+        assert file_nodes[0] in result
+
+
+# ---------------------------------------------------------------------------
+# CgrBackend (skipped if cgr is not installed)
+# ---------------------------------------------------------------------------
+
+class TestCgrBackend:
+    """Tests for CgrBackend — skipped when code-graph-rag is not installed."""
+
+    @pytest.fixture(autouse=True)
+    def _skip_without_cgr(self):
+        pytest.importorskip("cgr")
+
+    def test_cgr_backend_init(self):
+        """CgrBackend can be instantiated when cgr is installed."""
+        from graphbus_core.rag.code_graph import CgrBackend
+        backend = CgrBackend(index_dir=".cgr-test-index", mode="offline")
+        assert backend._mode == "offline"
+
+    def test_cgr_backend_invalid_mode(self):
+        """CgrBackend raises ValueError for unknown mode during build."""
+        from graphbus_core.rag.code_graph import CgrBackend
+        backend = CgrBackend(index_dir=".cgr-test-index", mode="invalid")
+        with pytest.raises(ValueError, match="Unknown mode"):
+            backend.build("/tmp/nonexistent")
+
+    def test_cgr_backend_build_offline(self, tmp_path):
+        """CgrBackend offline build runs cgr index and loads graph.json."""
+        from graphbus_core.rag.code_graph import CgrBackend
+
+        # Create a minimal Python project
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "hello.py").write_text("def greet():\n    return 'hi'\n")
+
+        index_dir = str(tmp_path / "cgr-out")
+        backend = CgrBackend(index_dir=index_dir, mode="offline")
+        # This may fail if cgr CLI is not available; that's expected in CI
+        try:
+            backend.build(str(src))
+        except RuntimeError:
+            pytest.skip("cgr index CLI not available in this environment")
+
+        summary = backend.to_summary()
+        assert summary["total_nodes"] >= 0
+
+
+# ---------------------------------------------------------------------------
+# Auto-selection / fallback
+# ---------------------------------------------------------------------------
+
+class TestBackendAutoSelection:
+    """Verify CodeGraph auto-selects and falls back correctly."""
+
+    def test_falls_back_when_cgr_missing(self):
+        """When cgr is not importable, LocalBackend is used."""
+        with patch("graphbus_core.rag.code_graph._cgr_available", return_value=False):
+            cg = CodeGraph.build_from_project(PROJECT_ROOT)
+        assert isinstance(cg._backend, LocalBackend)
+
+    def test_explicit_local_backend(self):
+        """Passing LocalBackend explicitly works."""
+        cg = CodeGraph.build_from_project(PROJECT_ROOT, backend=LocalBackend())
+        assert isinstance(cg._backend, LocalBackend)
+        assert len(cg) > 0

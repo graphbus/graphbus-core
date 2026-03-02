@@ -1,4 +1,9 @@
 networkx>=3.0
+
+# Code-graph RAG — Tree-sitter code graph + Memgraph/JSON export
+# Live mode (MemgraphIngestor) requires Docker; build requires cmake.
+code-graph-rag[treesitter-full]
+
 litellm>=1.0.0
 pytest>=7.0.0
 pytest-cov>=4.0.0
