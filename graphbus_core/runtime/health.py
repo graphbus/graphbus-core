@@ -397,13 +397,23 @@ class HealthMonitor:
         for callback in self.failure_callbacks:
             try:
                 callback(node_name, metrics)
-            except Exception:
-                pass  # Don't let callback errors affect monitoring
+            except Exception as exc:
+                # Don't let callback errors break health monitoring — but log them
+                # so operators aren't blind when an alerting/notification hook misfires.
+                logger.warning(
+                    "failure callback %s raised an error for agent '%s': %s",
+                    getattr(callback, '__name__', repr(callback)), node_name, exc,
+                )
 
     def _trigger_recovery_callbacks(self, node_name: str, metrics: HealthMetrics) -> None:
         """Trigger registered recovery callbacks."""
         for callback in self.recovery_callbacks:
             try:
                 callback(node_name, metrics)
-            except Exception:
-                pass
+            except Exception as exc:
+                # Same rationale as _trigger_failure_callbacks: surface the error
+                # without letting it propagate and mask the underlying health event.
+                logger.warning(
+                    "recovery callback %s raised an error for agent '%s': %s",
+                    getattr(callback, '__name__', repr(callback)), node_name, exc,
+                )
