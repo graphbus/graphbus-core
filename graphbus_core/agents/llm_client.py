@@ -16,6 +16,7 @@ For self-hosted / custom OpenAI-compatible endpoints (e.g. spicychai):
 Note: GRAPHBUS_API_KEY is for the warehousing layer only, not LLM calls.
 """
 
+import json
 import os
 from typing import Optional
 import litellm
@@ -26,6 +27,7 @@ from graphbus_core.constants import (
     SPICYCHAI_BASE_URL,
     SPICYCHAI_API_KEY,
 )
+from graphbus_core.exceptions import LLMResponseError
 
 # Suppress LiteLLM verbose logging by default
 litellm.set_verbose = False
@@ -103,7 +105,6 @@ class LLMClient:
         tool_schema: dict,
         system: Optional[str] = None,
     ) -> dict:
-        import json
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -135,4 +136,8 @@ class LLMClient:
         tool_calls = resp.choices[0].message.tool_calls
         if tool_calls:
             return json.loads(tool_calls[0].function.arguments)
-        raise ValueError(f"No tool call in LiteLLM response: {resp.choices[0].message}")
+        raw = str(resp.choices[0].message)
+        raise LLMResponseError(
+            f"LLM did not return a tool call for '{tool_name}'",
+            raw_response=raw,
+        )
