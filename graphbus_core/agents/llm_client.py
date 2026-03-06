@@ -78,24 +78,35 @@ class LLMClient:
             self._api_key = api_key
             self._base_url = base_url or os.getenv("OPENAI_API_BASE")
 
-    def generate(self, prompt: str, system: Optional[str] = None) -> str:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+    def _base_kwargs(self, messages: list) -> dict:
+        """Build the common LiteLLM completion kwargs shared by all call paths.
 
-        kwargs = dict(
+        Both generate() and generate_with_tool() need the same core set:
+        model, messages, token/temperature limits, and the optional api_key /
+        api_base overrides.  Centralising them here means a third call path
+        (e.g. streaming) only needs to extend the dict, and changing the
+        api_base key name (LiteLLM uses 'api_base', not 'base_url') only
+        needs to happen in one place.
+        """
+        kw: dict = dict(
             model=self.model,
             messages=messages,
             max_tokens=self.max_tokens,
             temperature=self.temperature,
         )
         if self._api_key:
-            kwargs["api_key"] = self._api_key
+            kw["api_key"] = self._api_key
         if self._base_url:
-            kwargs["api_base"] = self._base_url   # LiteLLM uses api_base, not base_url
+            kw["api_base"] = self._base_url   # LiteLLM uses api_base, not base_url
+        return kw
 
-        resp = litellm.completion(**kwargs)
+    def generate(self, prompt: str, system: Optional[str] = None) -> str:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        resp = litellm.completion(**self._base_kwargs(messages))
         return resp.choices[0].message.content or ""
 
     def generate_with_tool(
@@ -119,18 +130,9 @@ class LLMClient:
             },
         }
 
-        kwargs = dict(
-            model=self.model,
-            messages=messages,
-            tools=[tool_def],
-            tool_choice={"type": "function", "function": {"name": tool_name}},
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-        )
-        if self._api_key:
-            kwargs["api_key"] = self._api_key
-        if self._base_url:
-            kwargs["api_base"] = self._base_url   # LiteLLM uses api_base
+        kwargs = self._base_kwargs(messages)
+        kwargs["tools"] = [tool_def]
+        kwargs["tool_choice"] = {"type": "function", "function": {"name": tool_name}}
 
         resp = litellm.completion(**kwargs)
         tool_calls = resp.choices[0].message.tool_calls
