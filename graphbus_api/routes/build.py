@@ -70,7 +70,7 @@ def _job_to_response(job: BuildJob) -> BuildJobResponse:
 
 def _run_build(job: BuildJob, root_package: str, enable_agents: bool, api_key: Optional[str]):
     """Run a build in a background thread, updating job state."""
-    from graphbus_core.config import BuildConfig
+    from graphbus_core.config import BuildConfig, LLMConfig
     from graphbus_core.build.builder import build_project
 
     job.status = JobStatus.RUNNING
@@ -86,10 +86,16 @@ def _run_build(job: BuildJob, root_package: str, enable_agents: bool, api_key: O
 
         resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if resolved_key:
-            config.llm_config = {
-                "model": "claude-sonnet-4-20250514",
-                "api_key": resolved_key,
-            }
+            # Use LLMConfig (not a plain dict) — the builder accesses .model,
+            # .api_key, and .base_url as object attributes, so a dict here would
+            # raise AttributeError on any build request with enable_agents=True.
+            # Model defaults to GRAPHBUS_LLM_MODEL env var so operators can
+            # override it without touching code.
+            from graphbus_core.constants import DEFAULT_LLM_MODEL
+            config.llm_config = LLMConfig(
+                model=os.environ.get("GRAPHBUS_LLM_MODEL", DEFAULT_LLM_MODEL),
+                api_key=resolved_key,
+            )
 
         log.append(f"[graphbus] Starting build: {root_package}")
         log.append(f"[graphbus] Agents active: {enable_agents and bool(resolved_key)}")
