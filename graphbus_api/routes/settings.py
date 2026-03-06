@@ -37,12 +37,18 @@ class ModelsResponse(BaseModel):
 
 
 # ── Supported providers ────────────────────────────────────────────────────
-
+# Maps provider name → list of accepted model identifiers.
+# An empty list (or the special value "any") means the provider accepts
+# arbitrary model strings (e.g. openrouter surfaces hundreds of models).
+# Keep this in sync with the frontend model picker.
 SUPPORTED_PROVIDERS = {
-    "anthropic": ["claude-haiku-4-5", "claude-sonnet-4-5"],
+    # Undated aliases (claude-sonnet-4-6, claude-opus-4-6) always resolve to
+    # the latest stable snapshot — consistent with the rest of the codebase.
+    "anthropic": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"],
     "deepseek": ["deepseek-reasoner"],
-    "openai": ["gpt-4o", "gpt-4-turbo"],
-    "openrouter": ["auto"],
+    "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+    # openrouter proxies hundreds of models; accept any model string from them.
+    "openrouter": [],
 }
 
 
@@ -50,22 +56,31 @@ SUPPORTED_PROVIDERS = {
 
 def validate_model_config(config: dict) -> bool:
     """
-    Validate a model configuration.
+    Validate a model configuration against SUPPORTED_PROVIDERS.
+
+    Checks:
+      1. Required keys (provider, model, name) are present.
+      2. provider is in SUPPORTED_PROVIDERS.
+      3. model is in the provider's allowed list, OR the provider's list is
+         empty (signals "accept any model string", e.g. openrouter).
 
     Returns True if valid, False otherwise.
     """
     if not isinstance(config, dict):
         return False
-    
+
     if "provider" not in config or config["provider"] not in SUPPORTED_PROVIDERS:
         return False
-    
-    if "model" not in config:
+
+    if "model" not in config or "name" not in config:
         return False
-    
-    if "name" not in config:
+
+    # Validate the model name against the provider's allow-list.
+    # An empty list means the provider accepts arbitrary model strings.
+    allowed_models = SUPPORTED_PROVIDERS[config["provider"]]
+    if allowed_models and config["model"] not in allowed_models:
         return False
-    
+
     return True
 
 
