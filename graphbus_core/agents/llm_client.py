@@ -25,7 +25,6 @@ from graphbus_core.constants import (
     DEFAULT_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     SPICYCHAI_BASE_URL,
-    SPICYCHAI_API_KEY,
 )
 from graphbus_core.exceptions import LLMResponseError
 
@@ -34,8 +33,21 @@ litellm.set_verbose = False
 
 
 def _resolve_spicychai_key() -> str:
-    """Return the spicychai bearer token from env or the baked-in constant."""
-    return os.getenv("SPICYCHAI_API_KEY", SPICYCHAI_API_KEY)
+    """Return the spicychai bearer token from the SPICYCHAI_API_KEY env var.
+
+    Raises RuntimeError if the variable is not set.  The key is no longer
+    baked into source (this is a public package); it must be supplied via the
+    environment.  Set SPICYCHAI_API_KEY before using openai/* models without
+    an explicit api_key argument, or pass api_key directly to LLMClient().
+    """
+    key = os.getenv("SPICYCHAI_API_KEY", "")
+    if not key:
+        raise RuntimeError(
+            "SPICYCHAI_API_KEY environment variable is not set.  "
+            "Set it to your spicychai bearer token, or pass api_key= "
+            "explicitly when constructing LLMClient()."
+        )
+    return key
 
 
 def _resolve_spicychai_base() -> str:
