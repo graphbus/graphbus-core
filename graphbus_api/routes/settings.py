@@ -135,35 +135,6 @@ def save_user_models(uid: str, models: list[dict]) -> bool:
         return False
 
 
-def update_user_models(uid: str, models: list[dict]) -> bool:
-    """
-    Update user's model configurations in Firestore.
-
-    Returns True if successful, False otherwise.
-    """
-    # Validate all models
-    for model in models:
-        if not validate_model_config(model):
-            logger.warning("Invalid model config: %s", model)
-            return False
-    
-    db = get_db()
-    if db is None:
-        logger.warning("Firebase not initialized for update_user_models")
-        return False
-    
-    try:
-        from graphbus_api.firebase_auth import firestore
-        db.collection("user_settings").document(uid).update({
-            "models": models,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-        return True
-    except Exception as exc:
-        logger.error("Firestore error in update_user_models: %s", exc)
-        return False
-
-
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @router.get("/models", response_model=ModelsResponse)
@@ -215,7 +186,9 @@ async def save_user_models_endpoint(
         }
     
     # Save models
-    success = save_user_models(uid, [m.dict() for m in body.models])
+    # .model_dump() is the Pydantic v2 API; .dict() is deprecated and emits a
+    # DeprecationWarning in v2 which pollutes logs on every PUT /models call.
+    success = save_user_models(uid, [m.model_dump() for m in body.models])
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save models")
