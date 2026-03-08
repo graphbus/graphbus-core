@@ -22,3 +22,9 @@ python-dotenv>=1.0.0
 
 # Firebase Admin SDK (optional — for multi-tenant OAuth + API key management)
 firebase-admin>=6.0.0
+
+# API server dependencies (graphbus_api / Dockerfile.api)
+# Kept here rather than a separate requirements-api.txt so that
+# `pip install -r requirements.txt` produces a complete, runnable image.
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0

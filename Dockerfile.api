@@ -7,10 +7,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc git curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Create a non-root user to run the API server.
+# python:3.11-slim (Debian-based) doesn't ship a pre-built app user, so we
+# create one explicitly.  UID/GID 1001 avoids collision with root (0) and the
+# nobody user (65534).
+RUN groupadd --gid 1001 appgroup && \
+    useradd --uid 1001 --gid 1001 --no-create-home --shell /bin/false appuser
+
+# Install Python dependencies.
+# All production deps — including fastapi and uvicorn — are pinned in
+# requirements.txt.  A previous version had a second unpinned pip install:
+#   pip install uvicorn[standard] fastapi firebase-admin litellm
+# That installed litellm and firebase-admin twice (both already in
+# requirements.txt) and left uvicorn/fastapi with no version floors,
+# meaning two builds on different days could produce different API images.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir uvicorn[standard] fastapi firebase-admin litellm
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
 COPY graphbus_core/ ./graphbus_core/
@@ -20,6 +32,10 @@ COPY setup.py README.md ./
 
 # Install as package so graphbus_core imports resolve
 ENV PYTHONPATH=/app
+
+# Drop to non-root user.  Must come AFTER all file copies and pip installs
+# so that root can write to /app; the API server only reads pre-built files.
+USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
