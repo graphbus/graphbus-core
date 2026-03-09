@@ -14,12 +14,16 @@ jobs:
         python-version: ['3.11', '3.12', '3.13']
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+        # Cache the pip download cache so repeated runs don't re-download
+        # packages that haven't changed.  setup-python@v5 derives the cache
+        # key from requirements.txt automatically when cache: 'pip' is set.
+        cache: 'pip'
 
     - name: Install dependencies
       run: |
@@ -39,7 +43,7 @@ jobs:
         pytest tests/integration/ -v -m "not llm and not slow"
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
         flags: unittests
