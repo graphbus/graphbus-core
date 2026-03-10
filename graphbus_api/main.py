@@ -40,9 +40,22 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# CORS_ALLOWED_ORIGINS: comma-separated list of permitted origins.
+# Default ("*") allows all origins — fine for local dev and self-hosted
+# deployments where the API is not publicly reachable.  In production, set
+# this to your actual frontend origin(s) so browsers block cross-site requests
+# from unexpected domains:
+#
+#   CORS_ALLOWED_ORIGINS=https://app.graphbus.com,https://staging.graphbus.com
+#
+# FastAPI/Starlette treats ["*"] as "allow all", so the default behaviour
+# is identical to the previous hardcoded value.
+_cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*")
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
