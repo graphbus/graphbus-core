@@ -31,8 +31,9 @@ class MessageBus:
         # Message history for debugging/monitoring.
         # deque(maxlen=N) automatically evicts the oldest entry on append
         # when full — O(1) vs the O(n) list.pop(0) that a plain list requires.
-        self._max_history = max_history  # Keep last 1000 events
-        self._message_history: deque[Event] = deque(maxlen=self._max_history)
+        # maxlen is stored on the deque itself (self._message_history.maxlen),
+        # so there is no need for a separate _max_history attribute.
+        self._message_history: deque[Event] = deque(maxlen=max_history)
 
         # Statistics
         self._stats = {
@@ -90,7 +91,7 @@ class MessageBus:
         )
 
         # Track in history
-        self._add_to_history(event)
+        self._message_history.append(event)
 
         # Update stats
         self._stats["messages_published"] += 1
@@ -148,10 +149,6 @@ class MessageBus:
         """
         return list(self._subscriptions.keys())
 
-    def _add_to_history(self, event: Event) -> None:
-        """Add event to history; deque(maxlen) evicts the oldest entry automatically."""
-        self._message_history.append(event)
-
     def get_message_history(self, limit: int = 100) -> List[Event]:
         """
         Get recent message history.
@@ -162,9 +159,10 @@ class MessageBus:
         Returns:
             List of recent Event objects (newest first)
         """
-        # deque doesn't support slicing — convert to list first
-        history = list(self._message_history)
-        return list(reversed(history[-limit:]))
+        # Reverse the deque (newest-first) then slice — avoids building the
+        # full intermediate list before discarding most of it.
+        # deque supports __reversed__ natively since Python 3.8.
+        return list(reversed(self._message_history))[:limit]
 
     def get_stats(self) -> Dict[str, int]:
         """

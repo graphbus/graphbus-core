@@ -5,10 +5,13 @@ Centralized constants and defaults for GraphBus
 # Default LLM model for agent orchestration (LiteLLM model string format).
 DEFAULT_LLM_MODEL = "anthropic/claude-haiku-4-5"
 
-# spicychai cluster (Sravan's private LLM pool — HAProxy over LM Studio nodes)
+# spicychai cluster (HAProxy → LM Studio — for openai/* model routing)
+# Base URLs are not sensitive; the API key must come from the SPICYCHAI_API_KEY
+# environment variable.  No fallback value is stored here — this is a public
+# package and hardcoding a bearer token in source is a credential leak.
 SPICYCHAI_BASE_URL = "http://spicychai.com:3443/light/v1"
-SPICYCHAI_API_KEY = "a762a564d533cc28abb325a404e34005cd7b51e698d9dc1e"
 SPICYCHAI_MEDIUM_URL = "http://spicychai.com:3443/medium/v1"
+SPICYCHAI_API_KEY = ""  # sentinel — real value must come from env var
 
 # Other LLM defaults
 DEFAULT_TEMPERATURE = 0.7

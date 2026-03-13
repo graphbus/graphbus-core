@@ -148,11 +148,20 @@ def get_session_info(session_id: str):
         raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
 
     executor = session.executor
+    # Mirror the same topic-discovery logic used in start_runtime() above.
+    # The previous hardcoded `topics=[]` meant this endpoint was always wrong
+    # after startup — clients polling GET /{session_id} could never discover
+    # registered message-bus topics, making the field useless for introspection.
+    topics = list(
+        executor.message_bus.get_topics()
+        if hasattr(executor.message_bus, "get_topics")
+        else []
+    )
     return SessionInfo(
         session_id=session_id,
         artifacts_dir=session.artifacts_dir,
         nodes=list(executor.nodes.keys()),
-        topics=[],
+        topics=topics,
         created_at=session.created_at,
     )
 

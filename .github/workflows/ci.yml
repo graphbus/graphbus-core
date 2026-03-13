@@ -20,6 +20,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          # Cache pip's download cache keyed on setup.cfg / pyproject.toml so
+          # unchanged dependency sets are restored instead of re-downloaded.
+          # Saves ~30-60 s per matrix leg across 4 Python versions.
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -45,6 +49,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
       - name: Install linting tools
         run: pip install ruff
       - name: Lint with ruff

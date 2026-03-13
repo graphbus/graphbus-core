@@ -37,12 +37,18 @@ class ModelsResponse(BaseModel):
 
 
 # ── Supported providers ────────────────────────────────────────────────────
-
+# Maps provider name → list of accepted model identifiers.
+# An empty list (or the special value "any") means the provider accepts
+# arbitrary model strings (e.g. openrouter surfaces hundreds of models).
+# Keep this in sync with the frontend model picker.
 SUPPORTED_PROVIDERS = {
-    "anthropic": ["claude-haiku-4-5", "claude-sonnet-4-5"],
+    # Undated aliases (claude-sonnet-4-6, claude-opus-4-6) always resolve to
+    # the latest stable snapshot — consistent with the rest of the codebase.
+    "anthropic": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"],
     "deepseek": ["deepseek-reasoner"],
-    "openai": ["gpt-4o", "gpt-4-turbo"],
-    "openrouter": ["auto"],
+    "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+    # openrouter proxies hundreds of models; accept any model string from them.
+    "openrouter": [],
 }
 
 
@@ -50,22 +56,31 @@ SUPPORTED_PROVIDERS = {
 
 def validate_model_config(config: dict) -> bool:
     """
-    Validate a model configuration.
+    Validate a model configuration against SUPPORTED_PROVIDERS.
+
+    Checks:
+      1. Required keys (provider, model, name) are present.
+      2. provider is in SUPPORTED_PROVIDERS.
+      3. model is in the provider's allowed list, OR the provider's list is
+         empty (signals "accept any model string", e.g. openrouter).
 
     Returns True if valid, False otherwise.
     """
     if not isinstance(config, dict):
         return False
-    
+
     if "provider" not in config or config["provider"] not in SUPPORTED_PROVIDERS:
         return False
-    
-    if "model" not in config:
+
+    if "model" not in config or "name" not in config:
         return False
-    
-    if "name" not in config:
+
+    # Validate the model name against the provider's allow-list.
+    # An empty list means the provider accepts arbitrary model strings.
+    allowed_models = SUPPORTED_PROVIDERS[config["provider"]]
+    if allowed_models and config["model"] not in allowed_models:
         return False
-    
+
     return True
 
 
@@ -120,35 +135,6 @@ def save_user_models(uid: str, models: list[dict]) -> bool:
         return False
 
 
-def update_user_models(uid: str, models: list[dict]) -> bool:
-    """
-    Update user's model configurations in Firestore.
-
-    Returns True if successful, False otherwise.
-    """
-    # Validate all models
-    for model in models:
-        if not validate_model_config(model):
-            logger.warning("Invalid model config: %s", model)
-            return False
-    
-    db = get_db()
-    if db is None:
-        logger.warning("Firebase not initialized for update_user_models")
-        return False
-    
-    try:
-        from graphbus_api.firebase_auth import firestore
-        db.collection("user_settings").document(uid).update({
-            "models": models,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-        return True
-    except Exception as exc:
-        logger.error("Firestore error in update_user_models: %s", exc)
-        return False
-
-
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @router.get("/models", response_model=ModelsResponse)
@@ -200,7 +186,9 @@ async def save_user_models_endpoint(
         }
     
     # Save models
-    success = save_user_models(uid, [m.dict() for m in body.models])
+    # .model_dump() is the Pydantic v2 API; .dict() is deprecated and emits a
+    # DeprecationWarning in v2 which pollutes logs on every PUT /models call.
+    success = save_user_models(uid, [m.model_dump() for m in body.models])
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save models")

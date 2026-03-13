@@ -152,6 +152,7 @@ venv.bak/
 *.py.backup
 *.py.bak
 *.bak
+*.bak[0-9]*
 
 # Spyder project settings
 .spyderproject
