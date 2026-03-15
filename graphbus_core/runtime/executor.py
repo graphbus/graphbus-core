@@ -243,13 +243,39 @@ class RuntimeExecutor:
         print()
 
     def stop(self) -> None:
-        """Stop the runtime executor."""
+        """
+        Stop the runtime executor and clean up all managed subsystems.
+
+        Order of teardown:
+        1. Mark as stopped first so any in-flight event dispatch
+           that checks _is_running fast-fails cleanly.
+        2. Stop the hot-reload file watcher — avoids a reload being
+           triggered on a half-torn-down executor.
+        3. Disable the debugger — releases any held breakpoint state.
+        4. State manager / health monitor are stateless background-free
+           objects; no explicit teardown is required for them.
+        """
         if not self._is_running:
             print("[RuntimeExecutor] Not running")
             return
 
         print("[RuntimeExecutor] Stopping...")
         self._is_running = False
+
+        if self.hot_reload_manager is not None:
+            try:
+                self.hot_reload_manager.stop_watching()
+                print("[RuntimeExecutor]   ✓ Hot-reload watcher stopped")
+            except Exception as e:
+                print(f"[RuntimeExecutor]   ⚠ Error stopping hot-reload watcher: {e}")
+
+        if self.debugger is not None:
+            try:
+                self.debugger.disable()
+                print("[RuntimeExecutor]   ✓ Debugger disabled")
+            except Exception as e:
+                print(f"[RuntimeExecutor]   ⚠ Error disabling debugger: {e}")
+
         print("[RuntimeExecutor] Stopped")
 
     def call_method(

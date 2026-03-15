@@ -84,7 +84,7 @@ def start_runtime(req: RunRequest):
         session_id=session.session_id,
         artifacts_dir=req.artifacts_dir,
         nodes=list(executor.nodes.keys()),
-        topics=list(executor.message_bus.get_topics() if hasattr(executor.message_bus, "get_topics") else []),
+        topics=list(executor.message_bus.get_all_topics() if hasattr(executor.message_bus, "get_all_topics") else []),
         created_at=session.created_at,
     )
 
@@ -153,8 +153,8 @@ def get_session_info(session_id: str):
     # after startup — clients polling GET /{session_id} could never discover
     # registered message-bus topics, making the field useless for introspection.
     topics = list(
-        executor.message_bus.get_topics()
-        if hasattr(executor.message_bus, "get_topics")
+        executor.message_bus.get_all_topics()
+        if hasattr(executor.message_bus, "get_all_topics")
         else []
     )
     return SessionInfo(

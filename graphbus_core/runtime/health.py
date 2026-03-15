@@ -372,8 +372,11 @@ class HealthMonitor:
             # Record restart attempt
             self.restart_policy.record_restart(node_name)
 
-            # Try to restart by reloading the agent
-            if hasattr(self.executor, 'hot_reload_manager'):
+            # Try to restart by reloading the agent.
+            # hot_reload_manager is always an attribute on the executor (set to
+            # None when hot-reload is not enabled), so hasattr() is permanently
+            # True and is the wrong guard.  Check the value instead.
+            if self.executor.hot_reload_manager is not None:
                 logger.info("attempting to restart '%s'", node_name)
                 result = self.executor.hot_reload_manager.reload_agent(node_name)
 
@@ -385,7 +388,11 @@ class HealthMonitor:
                     logger.error("failed to restart '%s': %s", node_name, result.get('error'))
                     return False
             else:
-                logger.warning("hot reload not available, cannot restart '%s'", node_name)
+                logger.warning(
+                    "hot reload not enabled, cannot auto-restart '%s' "
+                    "(start executor with enable_hot_reload=True to allow restarts)",
+                    node_name,
+                )
                 return False
 
         except Exception as e:

@@ -40,6 +40,12 @@ class EventRouter:
         # route_event_to_node() doesn't re-run inspect.signature() on every event.
         # Values: 0 = no params, 1 = pass payload dict, 2+ = pass full Event.
         self._handler_param_counts: Dict[tuple[str, str], int] = {}
+        # (topic, node_name) -> event_handler closure.
+        # MessageBus.unsubscribe() identifies handlers by callable identity, so we
+        # must keep a reference to the exact closure we passed to bus.subscribe().
+        # Without this, unsubscribe() would have no way to remove the handler and
+        # stale closures would accumulate in the bus across hot reloads.
+        self._bus_subscriptions: Dict[tuple[str, str], Callable] = {}
 
     def register_subscriptions(self, subscriptions: List[Subscription]) -> None:
         """
@@ -94,10 +100,55 @@ class EventRouter:
         def event_handler(event: Event):
             self.route_event_to_node(node, handler_name, event)
 
+        # Keep a reference to the closure so unsubscribe() can remove it from
+        # the bus by identity.  A (topic, node_name) key is sufficient because
+        # the current data model binds each (topic, node) pair to exactly one
+        # handler via the artifact subscriptions.
+        self._bus_subscriptions[(topic, node_name)] = event_handler
+
         # Subscribe to message bus
         self.bus.subscribe(topic, event_handler, subscriber_name=node_name)
 
         logger.debug("Registered %s.%s() for %s", node_name, handler_name, topic)
+
+    def unsubscribe(self, topic: str, node_name: str) -> None:
+        """
+        Unsubscribe a specific node from a topic.
+
+        Called by HotReloadManager before re-registering a reloaded agent's
+        subscriptions.  Without this the old event_handler closure stays live
+        in the MessageBus and the node receives every event twice — once via
+        the stale closure (routing to the old class instance) and once via the
+        freshly registered closure (routing to the new instance).
+
+        Args:
+            topic:     Topic name (e.g., "/Order/Created")
+            node_name: Name of the node to unsubscribe
+        """
+        # Remove from the router's own handler registry.
+        if topic in self._handlers:
+            self._handlers[topic] = [
+                (node, handler_name)
+                for node, handler_name in self._handlers[topic]
+                if node.name != node_name
+            ]
+            if not self._handlers[topic]:
+                del self._handlers[topic]
+
+        # Remove the actual closure from the MessageBus.
+        # bus.unsubscribe() matches by callable identity, so we need the exact
+        # object we originally passed — retrieved from _bus_subscriptions.
+        key = (topic, node_name)
+        if key in self._bus_subscriptions:
+            self.bus.unsubscribe(topic, self._bus_subscriptions.pop(key))
+        else:
+            logger.warning(
+                "unsubscribe: no bus subscription found for (%s, %s) — "
+                "handler may already have been removed or was never registered",
+                topic, node_name,
+            )
+
+        logger.debug("unsubscribed %s from %s", node_name, topic)
 
     def route_event_to_node(self, node: GraphBusNode, handler_name: str, event: Event) -> None:
         """
