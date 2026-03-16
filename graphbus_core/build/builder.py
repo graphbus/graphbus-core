@@ -160,12 +160,16 @@ def build_project(config: BuildConfig, enable_agents: bool = False) -> BuildArti
                 model=config.llm_config.model,
                 api_key=config.llm_config.api_key
             )
+            from pathlib import Path as _Path
+            _output_path = _Path(config.output_dir)
+            _project_root = str(_output_path.parent if _output_path.name == '.graphbus' else _output_path)
             orchestrator = AgentOrchestrator(
                 agent_definitions=agent_definitions,
                 agent_graph=agent_graph,
                 llm_client=llm_client,
                 safety_config=config.safety_config,
-                user_intent=config.user_intent
+                user_intent=config.user_intent,
+                project_root=_project_root
             )
             modified_files = orchestrator.run()
             negotiations = orchestrator.negotiation_engine.get_all_commits()
