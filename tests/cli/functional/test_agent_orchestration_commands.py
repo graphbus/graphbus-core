@@ -299,7 +299,8 @@ class TestNegotiateCommand:
         result = runner.invoke(cli, [
             'negotiate',
             str(mock_artifacts_dir),
-            '--llm-api-key', 'test-api-key-12345'
+            '--llm-api-key', 'test-api-key-12345',
+            '--project-root', str(mock_artifacts_dir.parent)
         ])
 
         # Should show negotiation info (even if not fully implemented)
@@ -309,7 +310,8 @@ class TestNegotiateCommand:
         """Test negotiate with ANTHROPIC_API_KEY env var"""
         result = runner.invoke(cli, [
             'negotiate',
-            str(mock_artifacts_dir)
+            str(mock_artifacts_dir),
+            '--project-root', str(mock_artifacts_dir.parent)
         ], env={'ANTHROPIC_API_KEY': 'test-key-from-env'})
 
         # Should accept API key from environment
@@ -321,7 +323,8 @@ class TestNegotiateCommand:
             'negotiate',
             str(mock_artifacts_dir),
             '--rounds', '3',
-            '--llm-api-key', 'test-key'
+            '--llm-api-key', 'test-key',
+            '--project-root', str(mock_artifacts_dir.parent)
         ])
 
         if 'Max rounds:' in result.output:
@@ -333,7 +336,8 @@ class TestNegotiateCommand:
             'negotiate',
             str(mock_artifacts_dir),
             '--llm-model', 'gpt-4-turbo',
-            '--llm-api-key', 'test-key'
+            '--llm-api-key', 'test-key',
+            '--project-root', str(mock_artifacts_dir.parent)
         ])
 
         if 'LLM model:' in result.output:
@@ -346,7 +350,8 @@ class TestNegotiateCommand:
             str(mock_artifacts_dir),
             '--protected-files', 'agents/core.py',
             '--protected-files', 'agents/utils.py',
-            '--llm-api-key', 'test-key'
+            '--llm-api-key', 'test-key',
+            '--project-root', str(mock_artifacts_dir.parent)
         ])
 
         # Should accept multiple protected files
@@ -358,7 +363,8 @@ class TestNegotiateCommand:
             'negotiate',
             str(mock_artifacts_dir),
             '--arbiter-agent', 'ArbiterAgent',
-            '--llm-api-key', 'test-key'
+            '--llm-api-key', 'test-key',
+            '--project-root', str(mock_artifacts_dir.parent)
         ])
 
         # Should accept arbiter specification
@@ -370,7 +376,8 @@ class TestNegotiateCommand:
             'negotiate',
             str(mock_artifacts_dir),
             '--llm-api-key', 'test-key',
-            '-v'
+            '-v',
+            '--project-root', str(mock_artifacts_dir.parent)
         ])
 
         # Should run with verbose flag
