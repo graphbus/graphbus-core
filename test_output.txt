@@ -1,0 +1,186 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: /home/ubuntu/.openclaw/workspace/graphbus-core
+configfile: pytest.ini
+plugins: cov-7.0.0, anyio-4.12.1
+collected 836 items
+
+tests/cli/functional/test_agent_orchestration_commands.py .............. [  1%]
+...........................                                              [  4%]
+tests/cli/functional/test_build_command.py ........                      [  5%]
+tests/cli/functional/test_build_functional.py ..                         [  6%]
+tests/cli/functional/test_cli_phase1_integration.py ..................   [  8%]
+tests/cli/functional/test_inspect_command.py ...............             [ 10%]
+tests/cli/functional/test_run_command.py ...............                 [ 11%]
+tests/cli/functional/test_tui_command.py .......ss                       [ 12%]
+tests/cli/functional/test_validate_command.py ...............            [ 14%]
+tests/cli/integration/test_build_run_workflow.py .                       [ 14%]
+tests/cli/integration/test_cli_e2e_workflows.py ...............          [ 16%]
+tests/cli/integration/test_cli_workflows.py ...................          [ 18%]
+tests/cli/unit/test_config.py .....................                      [ 21%]
+tests/cli/unit/test_errors.py ..............                             [ 23%]
+tests/cli/unit/test_init_generate.py ............................        [ 26%]
+tests/cli/unit/test_output.py ....                                       [ 26%]
+tests/cli/unit/test_repl.py .....................                        [ 29%]
+tests/cli/unit/test_repl_commands.py ...........................         [ 32%]
+tests/cli/unit/test_repl_debugger.py ........................            [ 35%]
+tests/cli/unit/test_run_command_unit.py ............                     [ 36%]
+tests/cli/unit/test_state_command.py ..............                      [ 38%]
+tests/deployment/ci/unit/test_ci_command.py ....................         [ 41%]
+tests/deployment/docker/unit/test_docker_command.py .................... [ 43%]
+..                                                                       [ 43%]
+tests/deployment/k8s/unit/test_k8s_command.py ..................         [ 45%]
+tests/deployment/monitoring/unit/test_monitoring.py ..................s. [ 48%]
+.                                                                        [ 48%]
+tests/mcp/integration/test_mcp_agent_orchestration_tools.py ............ [ 49%]
+..............................                                           [ 53%]
+tests/messaging/functional/test_coherence_workflow.py ............       [ 54%]
+tests/messaging/functional/test_contract_workflow.py ..........          [ 55%]
+tests/messaging/functional/test_migration_workflow.py ..........         [ 57%]
+tests/messaging/integration/test_build_runtime_integration.py ........   [ 58%]
+tests/messaging/integration/test_migration_coherence_integration.py .... [ 58%]
+....                                                                     [ 59%]
+tests/messaging/unit/test_coherence.py ..........................        [ 62%]
+tests/messaging/unit/test_contracts.py .....................             [ 64%]
+tests/messaging/unit/test_migrations.py ................                 [ 66%]
+tests/runtime/functional/test_artifact_loading.py .......                [ 67%]
+tests/runtime/functional/test_health_monitoring_workflow.py .....        [ 68%]
+tests/runtime/functional/test_hot_reload_workflow.py ....                [ 68%]
+tests/runtime/functional/test_message_flow.py ......                     [ 69%]
+tests/runtime/functional/test_state_persistence_workflow.py ...          [ 69%]
+tests/runtime/integration/test_debugger_integration.py ................. [ 71%]
+                                                                         [ 71%]
+tests/runtime/integration/test_end_to_end.py ...........                 [ 72%]
+tests/runtime/integration/test_hello_world_runtime.py .............      [ 74%]
+tests/runtime/integration/test_phase1_integration.py ....                [ 75%]
+tests/runtime/integration/test_profiler_integration.py ...........       [ 76%]
+tests/runtime/unit/test_debugger.py ..........................s..        [ 79%]
+tests/runtime/unit/test_event_router.py .............                    [ 81%]
+tests/runtime/unit/test_executor.py ....................                 [ 83%]
+tests/runtime/unit/test_health_monitor.py .............................. [ 87%]
+..                                                                       [ 87%]
+tests/runtime/unit/test_hot_reload.py .....................              [ 90%]
+tests/runtime/unit/test_loader.py ............                           [ 91%]
+tests/runtime/unit/test_message_bus.py ...............                   [ 93%]
+tests/runtime/unit/test_profiler.py ...............................      [ 97%]
+tests/runtime/unit/test_state_manager.py .........................       [100%]
+
+=============================== warnings summary ===============================
+graphbus_cli/websocket_server.py:16
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_cli/websocket_server.py:16: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/ubuntu/.openclaw/workspace/graphbus-core/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/runtime/functional/test_health_monitoring_workflow.py: 5 warnings
+tests/runtime/integration/test_phase1_integration.py: 4 warnings
+tests/runtime/unit/test_health_monitor.py: 56 warnings
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/health.py:39: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self.created_at = datetime.utcnow()
+
+tests/runtime/functional/test_health_monitoring_workflow.py: 26 warnings
+tests/runtime/integration/test_phase1_integration.py: 10 warnings
+tests/runtime/unit/test_health_monitor.py: 53 warnings
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/health.py:230: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    metrics.last_error_time = datetime.utcnow()
+
+tests/runtime/functional/test_health_monitoring_workflow.py: 13 warnings
+tests/runtime/integration/test_phase1_integration.py: 34 warnings
+tests/runtime/unit/test_health_monitor.py: 36 warnings
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/health.py:206: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    metrics.last_success_time = datetime.utcnow()
+
+tests/runtime/functional/test_health_monitoring_workflow.py: 1 warning
+tests/runtime/integration/test_phase1_integration.py: 1 warning
+tests/runtime/unit/test_health_monitor.py: 15 warnings
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/health.py:127: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self.restart_history[node_name].append(datetime.utcnow())
+
+tests/runtime/functional/test_health_monitoring_workflow.py::TestHealthMonitoringWorkflow::test_auto_restart_workflow
+tests/runtime/unit/test_hot_reload.py::TestHotReloadManager::test_reload_agent_module_not_in_sys_modules
+tests/runtime/unit/test_hot_reload.py::TestHotReloadManager::test_reload_agent_class_not_found
+tests/runtime/unit/test_hot_reload.py::TestHotReloadManager::test_reload_agent_failure_recorded
+tests/runtime/unit/test_hot_reload.py::TestHotReloadManager::test_reload_all_agents_partial_failure
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/hot_reload.py:139: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat(),
+
+tests/runtime/functional/test_hot_reload_workflow.py: 6 warnings
+tests/runtime/integration/test_phase1_integration.py: 6 warnings
+tests/runtime/unit/test_hot_reload.py: 6 warnings
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/hot_reload.py:125: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat(),
+
+tests/runtime/functional/test_state_persistence_workflow.py: 3 warnings
+tests/runtime/integration/test_phase1_integration.py: 6 warnings
+tests/runtime/unit/test_state_manager.py: 18 warnings
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/state.py:51: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat(),
+
+tests/runtime/unit/test_health_monitor.py::TestRestartPolicy::test_should_restart_within_limit
+tests/runtime/unit/test_health_monitor.py::TestRestartPolicy::test_should_restart_at_limit
+tests/runtime/unit/test_health_monitor.py::TestRestartPolicy::test_should_restart_outside_window
+tests/runtime/unit/test_health_monitor.py::TestRestartPolicy::test_should_restart_outside_window
+tests/runtime/unit/test_health_monitor.py::TestHealthMonitor::test_auto_restart_respects_policy
+tests/runtime/unit/test_health_monitor.py::TestHealthMonitor::test_auto_restart_respects_policy
+tests/runtime/unit/test_health_monitor.py::TestHealthMonitor::test_auto_restart_with_backoff
+  /home/ubuntu/.openclaw/workspace/graphbus-core/graphbus_core/runtime/health.py:110: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Name                                         Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------
+graphbus_core/__init__.py                        5      0   100%
+graphbus_core/agents/__init__.py                 3      0   100%
+graphbus_core/agents/agent.py                  141     96    32%   89, 109-111, 133, 145-168, 204-224, 250-286, 300, 325-326, 348-406, 423-477, 507-550, 576-639
+graphbus_core/agents/llm_client.py              41     19    54%   39, 57-82, 117-126
+graphbus_core/agents/negotiation.py             89     62    30%   56-68, 81-96, 105-107, 116-130, 153-218
+graphbus_core/agents/negotiation_async.py      118     68    42%   52, 56-66, 70-83, 87-89, 115-130, 134-139, 154-155, 187-189, 218-230, 244-278
+graphbus_core/agents/schemas.py                  8      0   100%
+graphbus_core/build/__init__.py                  5      0   100%
+graphbus_core/build/artifacts.py                82     35    57%   71-75, 79-82, 111, 118-150
+graphbus_core/build/builder.py                 126     15    88%   56, 87, 122-123, 136-137, 144-147, 157, 200-203
+graphbus_core/build/code_writer.py             114     98    14%   47-57, 66-191, 195-200
+graphbus_core/build/contract_validator.py      135    116    14%   44-67, 93-117, 134-178, 188-216, 220-224, 228-239, 247-250, 260-283, 294-301, 307-315, 324-339, 344
+graphbus_core/build/extractor.py               114     13    89%   54-55, 70-73, 99-106, 233, 266, 308, 311
+graphbus_core/build/graph_builder.py            75     16    79%   36-37, 61-62, 129, 153-159, 173-174, 189-191
+graphbus_core/build/negotiation_session.py     252    136    46%   48, 105, 110-112, 119, 125, 129-134, 202, 206, 217-227, 231-237, 241-249, 253-266, 270-278, 288-293, 297-301, 317-333, 346-380, 431-442, 455-472, 484-492, 507-544, 559-571, 583-595
+graphbus_core/build/orchestrator.py            408    251    38%   99-110, 135, 144, 154-174, 181-193, 201-207, 212-216, 224-230, 242-274, 297-298, 316-375, 399-400, 418, 430-448, 459-502, 523, 533-553, 599, 603, 611-639, 645-646, 658-681, 687-715, 757-811, 835-869
+graphbus_core/build/refactoring.py             146    121    17%   46-64, 84-108, 123-136, 156-199, 211-218, 224-231, 237-252, 258-268, 278-296, 301-305, 309-335, 340-352
+graphbus_core/build/scanner.py                  61     25    59%   25-26, 30, 61-63, 92, 97-99, 114-131
+graphbus_core/config.py                         47      0   100%
+graphbus_core/constants.py                       4      0   100%
+graphbus_core/decorators.py                     61     30    51%   80-87, 102-108, 163-173, 191-203
+graphbus_core/exceptions.py                     38      6    84%   24-25, 71-72, 78-79
+graphbus_core/model/__init__.py                  7      0   100%
+graphbus_core/model/agent_def.py                35      3    91%   28, 32, 36
+graphbus_core/model/graph.py                    69     19    72%   36, 40, 50, 56, 81-86, 92-93, 139, 163-172
+graphbus_core/model/message.py                  86      5    94%   53, 75, 107, 152, 191
+graphbus_core/model/prompt.py                    8      0   100%
+graphbus_core/model/schema.py                   31      6    81%   21-26
+graphbus_core/model/serialization.py            51      0   100%
+graphbus_core/model/topic.py                    16      1    94%   16
+graphbus_core/node_base.py                      76     20    74%   165, 170, 174, 194-198, 211, 227-232, 248-253, 271-275, 363, 366
+graphbus_core/runtime/__init__.py                5      0   100%
+graphbus_core/runtime/coherence.py             312     15    95%   175-176, 258, 349, 417, 451, 464, 520-521, 536, 582, 589, 597, 619-620
+graphbus_core/runtime/contracts.py             264     23    91%   60, 195, 223, 299, 335, 342, 414, 431-432, 459-460, 476, 479, 485-486, 503, 533, 538, 547, 551, 554, 558, 566
+graphbus_core/runtime/debugger.py              137      6    96%   194-196, 222-223, 265, 272
+graphbus_core/runtime/event_router.py           62      5    92%   72-73, 158, 162-163
+graphbus_core/runtime/executor.py              290     53    82%   73-74, 88, 131-132, 146-147, 193-194, 220, 237, 248-249, 288, 292, 327, 404-412, 453-464, 477, 480, 487, 500, 509-510, 557-558, 570-571, 588, 593-596, 609-612, 618
+graphbus_core/runtime/health.py                161      8    95%   220, 255, 372-376, 395-396
+graphbus_core/runtime/hot_reload.py            138     39    72%   59-61, 106-108, 212, 219-265
+graphbus_core/runtime/loader.py                102     11    89%   44, 64-66, 99, 202-203, 225, 231, 238-239
+graphbus_core/runtime/message_bus.py            58      1    98%   193
+graphbus_core/runtime/migrations.py            218     29    87%   73, 86, 98, 187-188, 248, 253, 258, 329-343, 367, 398-399, 426, 431, 437-439, 458, 498-499, 513-515, 536, 562-563
+graphbus_core/runtime/monitoring.py            185     24    87%   102, 138-139, 192-213, 287-288, 303-304
+graphbus_core/runtime/profiler.py              248     24    90%   62, 67, 158-160, 372, 411-412, 484-493, 541-551, 560-798
+graphbus_core/runtime/state.py                  76      3    96%   118, 150-151
+graphbus_core/utils.py                          34     28    18%   36-60, 78-81, 97-112
+--------------------------------------------------------------------------
+TOTAL                                         4742   1430    70%
+Coverage HTML written to dir htmlcov
+=========== 832 passed, 4 skipped, 313 warnings in 67.92s (0:01:07) ============
